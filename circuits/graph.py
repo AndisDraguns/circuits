@@ -1,29 +1,27 @@
+from dataclasses import dataclass, field
 from collections import defaultdict
-from dataclasses import field
 
-from core import *
-from operations import *
-from formatting import Bits
+from circuits.core import Signal
 
 
 @dataclass(eq=False)
 class Node:
-    val: int|float|bool = -1  # stores Signal activation, used for debugging
-    parents: set['Node'] = field(default_factory=set)
-    children: set['Node'] = field(default_factory=set)
-    weights: dict['Node', int|float] = field(default_factory = lambda: {})
-    bias: int|float = 0
+    val: int | float | bool = -1  # stores Signal activation, used for debugging
+    parents: set["Node"] = field(default_factory=set)
+    children: set["Node"] = field(default_factory=set)
+    weights: dict["Node", int | float] = field(default_factory=lambda: {})
+    bias: int | float = 0
     depth: int | None = None
     column: int | None = None
 
     __hash__ = object.__hash__  # hash(id)
 
-    def add_parent(self, parent: 'Node', weight: int|float = 0):
+    def add_parent(self, parent: "Node", weight: int | float = 0):
         self.parents.add(parent)
         parent.children.add(self)
         self.weights[parent] = weight
 
-    def replace_parent(self, old_parent: 'Node', new_parent: 'Node'):
+    def replace_parent(self, old_parent: "Node", new_parent: "Node"):
         self.add_parent(new_parent, self.weights[old_parent])
         self.parents.remove(old_parent)
         old_parent.children.remove(self)
@@ -33,10 +31,11 @@ class Node:
 @dataclass
 class Graph:
     """Neural network graph"""
+
     layers: list[list[Node]]
 
-    def __init__(self, inputs: Bits, outputs: Bits) -> None:
-        inp_nodes, out_nodes = self.load_nodes(inputs.bitlist, outputs.bitlist)
+    def __init__(self, inputs: list[Signal], outputs: list[Signal]) -> None:
+        inp_nodes, out_nodes = self.load_nodes(inputs, outputs)
         self.layers = self.build_layers(inp_nodes, out_nodes)
 
     @classmethod
@@ -50,12 +49,12 @@ class Graph:
     def fuse_constants_into_biases(constants: set[Node], excluded: set[Node]) -> None:
         # Fold constants into thresholds
         while constants:
-            new_constants: set['Node'] = set()
+            new_constants: set["Node"] = set()
             for c in constants:
                 value = c.bias + 1
                 for child in c.children:
                     w = child.weights[c]
-                    child.bias += value*w
+                    child.bias += value * w
                     del child.weights[c]
                     child.parents.remove(c)
                     if len(child.parents) == 0 and child not in excluded:
@@ -63,14 +62,15 @@ class Graph:
             constants = new_constants
 
     @classmethod
-    def load_nodes(cls, inp_signals: list[Signal], out_signals: list[Signal]
-                   ) -> tuple[list[Node], list[Node]]:
+    def load_nodes(
+        cls, inp_signals: list[Signal], out_signals: list[Signal]
+    ) -> tuple[list[Node], list[Node]]:
         """Create nodes from signals"""
         inp_nodes = [Node(int(s.activation)) for s in inp_signals]
         out_nodes = [Node(int(s.activation)) for s in out_signals]
         inp_set = set(inp_nodes)
         out_set = set(out_nodes)
-        nodes = {k: v for k, v in zip(inp_signals+out_signals, inp_nodes+out_nodes)}
+        nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
         signals = {v: k for k, v in nodes.items()}
         seen: set[Node] = set()
         frontier = out_nodes
@@ -79,7 +79,7 @@ class Graph:
 
         # Go backwards from output nodes to record all connections
         while frontier:
-            new_frontier: set['Node'] = set()
+            new_frontier: set["Node"] = set()
             seen.update(frontier)
             for child in frontier:
 
@@ -98,7 +98,7 @@ class Graph:
                     parent = nodes[p]
                     if parent not in seen:
                         new_frontier.add(parent)
-                    child.add_parent(parent, weight = neuron.weights[i])
+                    child.add_parent(parent, weight=neuron.weights[i])
 
                 if len(child.parents) == 0:
                     constants.add(child)
@@ -110,11 +110,12 @@ class Graph:
         assert not disconnected, "Outputs not connected to inputs"
         return inp_nodes, out_nodes
 
-
     @staticmethod
     def initialize_layers(inp_nodes: list[Node]) -> list[list[Node]]:
         """Places signals into layers. Sets depth as distance from input nodes"""
-        n_parents_computed: defaultdict[Node, int] = defaultdict(int)  # default nr parents computed = 0
+        n_parents_computed: defaultdict[Node, int] = defaultdict(
+            int
+        )  # default nr parents computed = 0
         layers = [inp_nodes]
         frontier = set(inp_nodes)
         for inp in frontier:
@@ -125,7 +126,9 @@ class Graph:
             for parent in frontier:
                 for child in parent.children:
                     n_parents_computed[child] += 1
-                    if n_parents_computed[child] == len(child.parents):  # parents computed
+                    if n_parents_computed[child] == len(
+                        child.parents
+                    ):  # parents computed
                         new_frontier.add(child)
                         child.depth = depth + 1  # child is in the next layer
             frontier = new_frontier
@@ -133,20 +136,20 @@ class Graph:
             depth += 1
         return layers
 
-
     @staticmethod
-    def set_output_layer(layers: list[list[Node]], out_nodes: list[Node]) -> list[list[Node]]:
+    def set_output_layer(
+        layers: list[list[Node]], out_nodes: list[Node]
+    ) -> list[list[Node]]:
         """Ensure that all output nodes are on the last layer"""
         out_set = set(out_nodes)
         out_depths = {node.depth for node in out_set if node.depth is not None}
         for depth in out_depths:  # delete output nodes
             layers[depth] = [node for node in layers[depth] if node not in out_set]
-        max_depth = len(layers)-1
+        max_depth = len(layers) - 1
         layers[max_depth] = out_nodes[:]
         for out in out_set:
             out.depth = max_depth
         return layers
-
 
     @staticmethod
     def ensure_adjacent_parents(layers: list[list[Node]]) -> list[list[Node]]:
@@ -159,8 +162,10 @@ class Graph:
                 if len(node.children) == 0:
                     continue
 
-                max_child_depth = max([c.depth for c in node.children if c.depth is not None])
-                n_missing_layers = max_child_depth - (layer_idx+1)
+                max_child_depth = max(
+                    [c.depth for c in node.children if c.depth is not None]
+                )
+                n_missing_layers = max_child_depth - (layer_idx + 1)
                 if n_missing_layers <= 0:
                     continue
 
@@ -171,7 +176,7 @@ class Graph:
                     curr = Node(prev.val)
                     curr.depth = depth
                     curr.bias = -1
-                    curr.add_parent(prev, weight = 1)
+                    curr.add_parent(prev, weight=1)
                     copy_chain.append(curr)
                     prev = curr
 

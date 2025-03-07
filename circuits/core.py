@@ -6,9 +6,13 @@ from collections.abc import Callable
 @dataclass(frozen=True, eq=False)
 class Signal:
     """A connection point between neurons, with an activation value"""
+
     activation: bool | float
-    source: 'Neuron'
-    def __repr__(self): return f"Signal({self.activation})"
+    source: "Neuron"
+
+    def __repr__(self):
+        return f"Signal({self.activation})"
+
 
 @dataclass(frozen=True, eq=False)
 class Neuron:
@@ -16,18 +20,25 @@ class Neuron:
     weights: tuple[float, ...] | tuple[int, ...]
     bias: float | int
     activation_function: Callable[[float | int], float | bool]
+
     @property
     def outgoing(self) -> Signal:  # creates new Signal
         summed = sum(v.activation * w for v, w in zip(self.incoming, self.weights))
-        return Signal(self.activation_function(summed+self.bias), source=self)
+        return Signal(self.activation_function(summed + self.bias), source=self)
 
 
 # Linear threshold circuits
 Bit = Signal
-def step(x: float | int) -> bool: return x >= 0
+
+
+def step(x: float | int) -> bool:
+    return x >= 0
+
+
 def gate(incoming: list[Bit], weights: list[int], threshold: int) -> Bit:
     """Create a linear threshold gate as a boolean neuron with a step function"""
     return Neuron(tuple(incoming), tuple(weights), -threshold, step).outgoing
+
 
 def const(values: list[bool] | list[int] | str) -> list[Bit]:
     """Create constant list[Bit] from bits represented as bool, 0/1 or '0'/'1.
@@ -36,14 +47,6 @@ def const(values: list[bool] | list[int] | str) -> list[Bit]:
     return [gate([], [], int(v)) for v in negated]
 
 
-# Logic gates
-def not_(x: Bit) -> Bit: return gate([x], [-1], 0)
-def or_(x: list[Bit]) -> Bit: return gate(x, [1]*len(x), 1)
-def and_(x: list[Bit]) -> Bit: return gate(x, [1]*len(x), len(x))
-def xor(x: list[Bit]) -> Bit:
-    counters = [gate(x, [1]*len(x), i+1) for i in range(len(x))]
-    return gate(counters, [(-1)**i for i in range(len(x))], 1)
-
-
 # Example:
-# xor(const('110'))  # Computes 1 xor 1 xor 0, which equals 0.
+# def and_(x: list[Bit]) -> Bit: return gate(x, [1]*len(x), len(x))
+# and_(const('110'))  # Computes '1 and 1 and 0', which equals 0.
