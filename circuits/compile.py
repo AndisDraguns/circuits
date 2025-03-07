@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
+from collections.abc import Callable
 
-from circuits.core import Signal
+from circuits.core import Signal, const
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, slots=True)
 class Node:
     val: int | float | bool = -1  # stores Signal activation, used for debugging
     parents: set["Node"] = field(default_factory=set)
@@ -28,7 +29,7 @@ class Node:
         del self.weights[old_parent]
 
 
-@dataclass
+@dataclass(slots=True)
 class Graph:
     """Neural network graph"""
 
@@ -200,3 +201,46 @@ class Graph:
                 node.column = j
 
         return layers
+
+
+@dataclass(frozen=True, slots=True)
+class ParentSynapse:
+    column: int
+    weight: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class LayeredGraphNode:
+    synapses: tuple[ParentSynapse, ...]
+    bias: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class LayeredGraph:
+    layers: tuple[tuple[LayeredGraphNode, ...], ...]
+
+    def __init__(self, graph: Graph) -> None:
+        layers: list[list[LayeredGraphNode]] = []
+        for layer in graph.layers:
+            nodes: list[LayeredGraphNode] = []
+            for node in layer:
+                columns = [p.column for p in node.parents if p.column is not None]
+                weights = [node.weights[p] for p in node.parents]
+                assert len(columns) == len(weights), "Nodes must have a column index"
+                synapses = tuple(ParentSynapse(c, w) for c, w in zip(columns, weights))
+                nodes.append(LayeredGraphNode(synapses, node.bias))
+            layers.append(nodes)
+        object.__setattr__(self, "layers", layers)
+
+
+def compile_from_example(inputs: list[Signal], outputs: list[Signal]) -> LayeredGraph:
+    graph = Graph(inputs, outputs)
+    layered_graph = LayeredGraph(graph)
+    del graph
+    return layered_graph
+
+
+def compile(function: Callable[..., list[Signal]], input_len: int) -> LayeredGraph:
+    dummy_inputs = const("0" * input_len)
+    dummy_outputs = function(dummy_inputs)
+    return compile_from_example(dummy_inputs, dummy_outputs)

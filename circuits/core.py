@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 
 # Core MLP classes
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Signal:
     """A connection point between neurons, with an activation value"""
 
@@ -14,7 +14,7 @@ class Signal:
         return f"Signal({self.activation})"
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Neuron:
     incoming: tuple[Signal, ...]
     weights: tuple[float, ...] | tuple[int, ...]

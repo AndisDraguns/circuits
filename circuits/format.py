@@ -6,12 +6,12 @@ import builtins
 from circuits.core import Bit, const
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Bits:
     """Represents a list of bits in various formats.
     For example, Bits(42).bitstr -> '101010'."""
 
-    bitlist: list[Bit]
+    bit_tuple: tuple[Bit, ...]
 
     def __repr__(self):
         return f"Bits({self.bitstr})"
@@ -21,15 +21,15 @@ class Bits:
         if min_length is not None:
             padding_length = max(0, min_length - len(bitlist))
             bitlist = const("0" * padding_length) + bitlist
-        object.__setattr__(self, "bitlist", bitlist)
+        object.__setattr__(self, "bit_tuple", tuple(bitlist))
 
     @staticmethod
-    def _is_bit_list(value: list[Any]) -> TypeGuard[list[Bit]]:
-        return all(isinstance(x, Bit) for x in value)
+    def _is_bit_list(lst: list[Any]) -> TypeGuard[list[Bit]]:
+        return all(isinstance(el, Bit) for el in lst)
 
     @staticmethod
-    def _is_bool_int_list(value: list[Any]) -> TypeGuard[list[int | bool]]:
-        return all(isinstance(x, (bool, int)) for x in value)
+    def _is_bool_int_list(lst: list[Any]) -> TypeGuard[list[int | bool]]:
+        return all(isinstance(el, (bool, int)) for el in lst)
 
     @classmethod
     def _bitlist_from_value(
@@ -73,6 +73,10 @@ class Bits:
                 return cls(bytes.fromhex(s))
             case "text":
                 return cls(s.encode("utf-8"))
+
+    @property
+    def bitlist(self) -> list[Bit]:
+        return list(self.bit_tuple)
 
     @property
     def ints(self) -> list[int]:  # e.g. [1,0,1,0,1,0]
