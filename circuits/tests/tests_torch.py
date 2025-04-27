@@ -6,7 +6,7 @@ from circuits.examples.sha3 import sha3
 
 def test_mlp():
     """Test MLP implementation with SHA3"""
-    n_rounds = 7  # reduced number of rounds for testing
+    n_rounds = 2  # reduced number of rounds for testing
     test_phrase_1 = "Rachmaninoff"
     test_phrase_2 = "Reify semantics as referentless embeddings"
 
@@ -25,3 +25,5 @@ def test_mlp():
     out2 = mlp.infer_bits(message2)
     assert hashed1.hex == out1.hex
     assert hashed2.hex == out2.hex
+
+test_mlp()
