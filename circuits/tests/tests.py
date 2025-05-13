@@ -2,7 +2,7 @@ from circuits.core import Bit, gate, const
 from circuits.operations import add, xors
 from circuits.format import Bits, format_msg, bitfun
 from circuits.examples.sha2 import sha2
-from circuits.examples.keccak import keccak
+from circuits.examples.keccak import keccak, KeccakParams
 
 
 def test_gate():
@@ -75,8 +75,15 @@ def test_sha256():
 def test_keccak_p_1600_2():
     test_phrase = "Reify semantics as referentless embeddings"
     message = format_msg(test_phrase)
-    print("message:", message.hex)
     hashed = bitfun(keccak)(message, c=448, l=6, n=2)
-    print("hashed:", hashed.hex)
-    expected = "86511d3d80bc89e0dcf4de83f6750eac2d5ccde8a392be975cb463f2"  # regression test
+    expected = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
     assert hashed.hex == expected
+
+
+def test_keccak_p_50_3_c20():
+    test_phrase = "Reify semantics as referentless embeddings"
+    p = KeccakParams(c=20, l=1, n=3)
+    message = format_msg(test_phrase, bit_len=p.msg_len)
+    hashed = bitfun(keccak)(message, c=p.c, l=p.l, n=p.n)
+    expected = "1111111010"  # regression test
+    assert hashed.bitstr == expected

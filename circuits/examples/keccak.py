@@ -52,7 +52,7 @@ def reverse_bytes(bits: list[Bit]) -> list[Bit]:
 
 
 def lanes_to_state(lanes: Lanes) -> list[Bit]:
-    """Converts lanes (5,5,w) to a state vector (5*5*w,)"""
+    """Converts lanes (5, 5, w) to a state vector (5 x 5 x w,)"""
     w = len(lanes[0][0])
     state = const("0" * 5*5*w)
     for x in range(5):
@@ -62,7 +62,7 @@ def lanes_to_state(lanes: Lanes) -> list[Bit]:
 
 
 def state_to_lanes(state: list[Bit]) -> Lanes:
-    """Converts a state vector (5*5*w,) to lanes (5,5,w)"""
+    """Converts a state vector (5 x 5 x w,) to lanes (5, 5, w)"""
     w = len(state) // (5 * 5)
     lanes = get_empty_lanes(w)
     for x in range(5):
@@ -107,12 +107,14 @@ def chi(lanes: Lanes) -> Lanes:
                 result[x][y][z] = xor([lanes[x][y][z], and_bit])
     return result
 
+
 def iota(lanes: Lanes, round_constant: str) -> Lanes:
     result = copy(lanes)
     for z, bit in enumerate(round_constant):
         if bit == "1":
             result[0][0][z] = not_(lanes[0][0][z])
     return result
+
 
 def get_round_constants(b: int, n: int) -> list[str]:
     """Calculates round constants as bitstrings"""
@@ -129,38 +131,30 @@ def get_round_constants(b: int, n: int) -> list[str]:
                 d = 1 << ((1<<j)-1)
                 rc ^= d
         rcs.append(format(rc, "064b"))
-        # print(rc)
     n_default_rounds = 12+2*l
     rcs = rcs[n_default_rounds:] + rcs[:n_default_rounds]  # ends on last round
     rcs = rcs * (n//cycle_len) + rcs  # if n_rounds > cycle_len
     rcs = rcs[-n:]  # truncate to last n_rounds
     rcs = [rc[-2**l:] for rc in rcs]  # lowest w=2**l bits
-    print(l, n_default_rounds, n)
     return rcs
 
 
 # Main SHA3 functions
-from circuits.format import Bits
 def keccak_round(lanes: Lanes, rc: str) -> Lanes:
     lanes = theta(lanes)
-    # print("post t", Bits(lanes_to_state(lanes)).hex)
     lanes = rho_pi(lanes)
-    # print("post p", Bits(lanes_to_state(lanes)).hex)
     lanes = chi(lanes)
-    # print("post c", Bits(lanes_to_state(lanes)).hex)
     lanes = iota(lanes, rc)
-    print("rc:", rc)
-    print("post i", Bits(lanes_to_state(lanes)).hex)
     return lanes
+
 
 def keccak_p(lanes: Lanes, b: int, n: int) -> Lanes:
     """Hashes (5,5,l**2) to (5,5,l**2)"""
     constants = get_round_constants(b, n)
-    print(Bits(lanes_to_state(lanes)).hex)
     for round in range(n):
-        print(round)
         lanes = keccak_round(lanes, constants[round])
     return lanes
+
 
 def keccak(message: list[Bit], c: int=448, l: int=6, n: int=24) -> list[Bit]:
     p = KeccakParams(c, l, n)
@@ -173,13 +167,12 @@ def keccak(message: list[Bit], c: int=448, l: int=6, n: int=24) -> list[Bit]:
     return state
 
 
-# Example:
+## Example:
 # from circuits.format import format_msg, bitfun
-# def test_sha3():
-#     # p = KeccakParams(c=4, l=0, n=1)
-#     p = KeccakParams(c=448, l=6, n=24)
+# def test_keccak():
+#     p = KeccakParams(c=4, l=0, n=1)
 #     test_phrase = "Reify semantics as referentless embeddings"
 #     message = format_msg(test_phrase, bit_len=p.msg_len)
 #     hashed = bitfun(keccak)(message, p.c, p.l, p.n)
 #     print("hashed:", hashed.bitstr)
-# test_sha3()
+# test_keccak()
