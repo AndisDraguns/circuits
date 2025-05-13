@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import Any
 
 
 # Core MLP classes
@@ -10,7 +9,7 @@ class Signal:
 
     activation: bool | float
     source: "Neuron"
-    metadata: dict[str, Any]  = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict)
 
     def __repr__(self):
         return f"Signal({self.activation})"

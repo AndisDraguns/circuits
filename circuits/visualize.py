@@ -152,3 +152,26 @@ def draw(m: t.Tensor | list[list[int]] | list[list[float]], **kwargs: Any) -> No
 # m = t.randn(20, 10)
 # draw(m, **plot_kwargs)
 # MatrixPlot(m, **plot_kwargs).save('test.png')
+
+
+# from circuits.format import format_msg, bitfun
+# from circuits.examples.keccak import keccak, KeccakParams
+# from circuits.compile import compile_from_example
+# from circuits.torch_mlp import StepMLP
+
+# p = KeccakParams(c=20, l=3, n=3)
+# print("params:", p)
+# test_phrase = "Rachmaninoff"
+# message = format_msg(test_phrase, bit_len=p.msg_len)
+# hashed = bitfun(keccak)(message, c=p.c, l=p.l, n=p.n)
+# layered_graph = compile_from_example(message.bitlist, hashed.bitlist)
+# mlp = StepMLP.from_graph(layered_graph)
+# print("layer sizes:", mlp.sizes)
+
+# plot_kwargs = {'scale': 0.1, 'clip_val': 20, 'raster': True, 'quick': False,
+#                 'downsample_factor': 1, 'downsample_kernel': 'max_abs', 'square_size': 10}
+# layer_nr = -10
+# matrix = mlp.net[layer_nr].weight
+# # MatrixPlot(matrix, **plot_kwargs).save('test.png')
+
+# print(layered_graph.layers[-9])

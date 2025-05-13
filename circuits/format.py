@@ -141,3 +141,160 @@ def bitfun(function: Callable[..., Any]) -> Callable[..., Bits]:
         return Bits(function(*modified_args, **kwargs))
 
     return bits_function
+
+
+# def track(func: Callable[..., Any], prefix:str|None=None) -> Callable[..., Bits]:
+#     """Decorator to track the name of the function that created the bits"""
+#     def wrapper(*args: Any, **kwargs: Any) -> Callable[..., Bits]:
+#         name = func.__name__
+#         if prefix:
+#             name = f"{prefix}_{name}"
+#         res = func(*args, **kwargs)
+#         if isinstance(res, list):
+#             for i, bit in enumerate(res):
+#                 bit.metadata['name'] = f'{func.__name__}[{i}]'
+#         else:
+#             res.metadata['name'] = func.__name__
+#         return res
+#     return wrapper
+
+# def track(func: Callable[..., list[Bit]]) -> Callable[..., list[Bit]]:
+#     """Decorator to track the name of the function that created the bits"""
+#     def wrapper(*args: Any, **kwargs: Any) -> list[Bit]:
+#         name = func.__name__
+#         res = func(*args, **kwargs)
+#         if isinstance(res, Bit):
+#             res.metadata['name'] = name
+#         else:
+#             try:
+#                 resb = Bits(res).bitlist
+#                 for i, bit in enumerate(resb):
+#                     bit.metadata['name'] = f'{name}[{i}]'
+#                 res = resb
+#             except ValueError:
+#                 # If res is not a Bits object, we can't track it
+#                 pass
+#         return res
+#     return wrapper
+
+# def track(func: Callable[..., list[Bit]]) -> Callable[..., list[Bit]]:
+#     """Decorator to track the name of the function that created the bits"""
+#     def wrapper(*args: Any, **kwargs: Any) -> list[Bit]:
+#         res = func(*args, **kwargs)
+#         for i, bit in enumerate(res):
+#             bit.metadata['name'] = f'{func.__name__}[{i}]'
+#         return res
+#     return wrapper
+
+
+# def track(func: Callable[..., list[Bit]], name: str|None=None) -> Callable[..., list[Bit]]:
+#     """Decorator to track the name of the function that created the bits"""
+#     def wrapper(*args: Any, **kwargs: Any) -> list[Bit]:
+#         prefix = name if name else func.__name__
+#         res = func(*args, **kwargs)
+#         for i, bit in enumerate(res):
+#             if 'name' in bit.metadata:
+#                 prefix = bit.metadata['name'] + '.' + prefix
+#             bit.metadata['name'] = f'{prefix}[{i}]'
+#         return res
+#     return wrapper
+
+
+# def track(func: Callable[..., list[Bit]], name: str|None=None) -> Callable[..., list[Bit]]:
+#     """Decorator to track the name of the function that created the bits"""
+#     def wrapper(*args: Any, **kwargs: Any) -> list[Bit]:
+#         prefix = name if name else func.__name__
+#         res = func(*args, **kwargs)
+#         for i, bit in enumerate(res):
+#             if 'name' in bit.metadata:
+#                 prefix = bit.metadata['name'] + '.' + prefix
+#             bit.metadata['name'] = f'{prefix}[{i}]'
+#         return res
+#     return wrapper
+
+
+from typing import Any, TypeVar
+from collections.abc import Mapping, Iterable
+T = TypeVar('T')
+def track(func: Callable[..., T], name: str|None = None) -> Callable[..., T]:
+    """Decorator to track Bit objects at any nesting depth"""
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        prefix = name if name else func.__name__
+        result = func(*args, **kwargs)
+        
+        def process(item: Any, path:str=""):
+            # Base case: found a Bit
+            if hasattr(item, "metadata"):
+                old_name = item.metadata.get('name', '')
+                full_path = f"{prefix}{path}{'.' + old_name if old_name else ''}"
+                item.metadata['name'] = full_path
+                return
+                
+            # Skip non-container types and strings
+            if not isinstance(item, Iterable) or isinstance(item, str):
+                return
+                
+            # Handle mappings (dict-like)
+            if isinstance(item, Mapping):
+                for k, v in item.items():  # type: ignore[reportUnknownMemberType]
+                    process(v, f"{path}[{k}]")
+                return
+                
+            # Handle sequences (list-like)
+            try:
+                for i, v in enumerate(item):  # type: ignore[reportUnknownMemberType]
+                    process(v, f"{path}[{i}]")
+            except (TypeError, ValueError):
+                pass  # Not indexable
+        
+        process(result)
+        return result
+        
+    return wrapper
+
+
+
+# from typing import Any, TypeVar
+# from functools import wraps
+# from collections.abc import Mapping, Iterable
+
+# T = TypeVar('T')
+
+# def track(func: Callable[..., T]) -> Callable[..., T]:
+#     """Decorator that properly stacks trackers for hierarchical naming"""
+#     @wraps(func)
+#     def wrapper(*args: Any, **kwargs: Any) -> T:
+#         result = func(*args, **kwargs)
+        
+#         # Process the result to add or append metadata
+#         def process(item: Any, path:str=""):
+#             # Base case: found a Bit object
+#             if hasattr(item, "metadata") and hasattr(item.metadata, "__setitem__"):
+#                 current_path = f"{func.__name__}{path}"
+#                 if 'name' in item.metadata:
+#                     item.metadata['name'] = f"{current_path}.{item.metadata['name']}"
+#                 else:
+#                     item.metadata['name'] = current_path
+#                 return
+                
+#             # Skip non-container types and strings
+#             if not isinstance(item, Iterable) or isinstance(item, str):
+#                 return
+                
+#             # Handle mappings (dict-like)
+#             if isinstance(item, Mapping):
+#                 for k, v in item.items():  # type: ignore[reportUnknownMemberType]
+#                     process(v, f"[{k}]")
+#                 return
+                
+#             # Handle sequences (list-like)
+#             try:
+#                 for i, v in enumerate(item):  # type: ignore[reportUnknownMemberType]
+#                     process(v, f"[{i}]")
+#             except (TypeError, ValueError):
+#                 pass  # Not indexable
+        
+#         process(result)
+#         return result
+        
+#     return wrapper

@@ -44,6 +44,7 @@ class Oset(MutableSet[T]):
 @dataclass(eq=False, slots=True)
 class Node:
     val: int | float | bool = -1  # stores Signal activation, used for debugging
+    metadata: dict[str, str] = field(default_factory=dict)
     parents: Oset["Node"] = field(default_factory=lambda: Oset())
     children: Oset["Node"] = field(default_factory=lambda: Oset())
     weights: dict["Node", int | float] = field(default_factory=lambda: {})
@@ -103,8 +104,8 @@ class Graph:
         cls, inp_signals: list[Signal], out_signals: list[Signal]
     ) -> tuple[list[Node], list[Node]]:
         """Create nodes from signals"""
-        inp_nodes = [Node(int(s.activation)) for s in inp_signals]
-        out_nodes = [Node(int(s.activation)) for s in out_signals]
+        inp_nodes = [Node(int(s.activation), s.metadata) for s in inp_signals]
+        out_nodes = [Node(int(s.activation), s.metadata) for s in out_signals]
         inp_set = Oset(inp_nodes)
         out_set = Oset(out_nodes)
         nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
@@ -130,7 +131,7 @@ class Graph:
                 child.bias = neuron.bias
                 for i, p in enumerate(neuron.incoming):
                     if p not in nodes:
-                        nodes[p] = Node(int(p.activation))
+                        nodes[p] = Node(int(p.activation), p.metadata)
                         signals[nodes[p]] = p
                     parent = nodes[p]
                     if parent not in seen:
@@ -248,6 +249,9 @@ class ParentSynapse:
 class LayeredGraphNode:
     synapses: tuple[ParentSynapse, ...]
     bias: int | float
+    metadata: dict[str, str] = field(default_factory=dict)
+    def __repr__(self) -> str:
+        return f"{self.metadata.get('name', 'Node')}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,7 +267,7 @@ class LayeredGraph:
                 weights = [node.weights[p] for p in node.parents]
                 assert len(columns) == len(weights), "Nodes must have a column index"
                 synapses = tuple(ParentSynapse(c, w) for c, w in zip(columns, weights))
-                nodes.append(LayeredGraphNode(synapses, node.bias))
+                nodes.append(LayeredGraphNode(synapses, node.bias, node.metadata))
             layers.append(nodes)
         object.__setattr__(self, "layers", layers)
 
