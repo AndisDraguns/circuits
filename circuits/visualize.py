@@ -121,8 +121,9 @@ class MatrixPlot:
             display(SVG(data))
 
 
-def get_matrix_grid_html(matrices: list[Matrix], gap:int=5, **kwargs: Any) -> str:
+def get_matrix_grid_html(matrices: list[Matrix], kwargs: Any = {}) -> str:
     "For displaying matrices in a flexible grid. For use with IPython.display.HTML"
+    gap = 5
     import base64
     css = f"<style>.matrix-container {{display: flex; flex-wrap: wrap; gap: {gap}px;}}</style>"
     matrices_html: list[str] = []
