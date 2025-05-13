@@ -43,10 +43,14 @@ def test_mlp_simple():
 
     layered_graph = compile_from_example(message.bitlist, hashed.bitlist)
     mlp = StepMLP.from_graph(layered_graph)
-    print("layer sizes:", [l.in_features for l in mlp.net] + [mlp.net[-1].out_features])
+    print("layer sizes:", mlp.sizes)
+    print("n layers:", len(mlp.sizes))
+    n_matrix_els = [mlp.sizes[i]*mlp.sizes[i+1] for i in range(len(mlp.sizes)-1)]
+    print("n matrix elements:", n_matrix_els)
+    print("n matrix elements sum:", sum(n_matrix_els))
 
     out = mlp.infer_bits(message)
     assert hashed.bitstr == out.bitstr
     expected = "0111111010"  # regression test
     assert out.bitstr == expected
-# test_mlp_simple()
+test_mlp_simple()
