@@ -36,17 +36,17 @@ ands = bitwise(and_)
 xors = bitwise(xor)
 
 
-# from math import ceil
-# def parity(x: list[Bit]) -> Bit:
-#     """Return 1 iff odd number of inputs are 1. Depth-3 circuit, adapted from:
-#     Discrete Neural Computation: A Theoretical Foundation - page 174.
-#     Equivalent to xor, but with a different structure."""
-#     n = len(x)
-#     m = ceil(n ** (1 / 2))
-#     m += m % 2  # ensure m is even
-#     large = [gate(x, [1] * n, (i + 1) * m + 1) for i in range(m)]
-#     small = [gate(x + large, [1] * n + [-m] * m, i + 1) for i in range(m)]
-#     return gate(small, [(-1) ** (i) for i in range(m)], 1)
+from math import ceil
+def parity(x: list[Bit]) -> Bit:
+    """Return 1 iff odd number of inputs are 1. Depth-3 circuit, adapted from:
+    Discrete Neural Computation: A Theoretical Foundation - page 174.
+    Equivalent to xor, but with a different structure."""
+    n = len(x)
+    m = ceil(n ** (1 / 2))
+    m += m % 2  # ensure m is even
+    large = [gate(x, [1] * n, (i + 1) * m + 1) for i in range(m)]
+    small = [gate(x + large, [1] * n + [-m] * m, i + 1) for i in range(m)]
+    return gate(small, [(-1) ** (i) for i in range(m)], 1)
 
 
 # Other operations
@@ -75,3 +75,8 @@ def shift(x: list[Bit], shift: int = 1) -> list[Bit]:
         return const("0" * shift) + x[:-shift]
     else:
         return x[-shift:] + const("0" * shift)
+    
+
+def inhib(x: list[Bit]) -> Bit:
+    """An 'and' gate with 'not' applied to its first input"""
+    return gate(x, [-1] + [1] * (len(x) - 1), (len(x) - 1))

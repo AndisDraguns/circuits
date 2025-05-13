@@ -5,6 +5,35 @@ from collections.abc import Callable
 from circuits.core import Signal, const
 
 
+
+from typing import TypeVar
+from collections.abc import MutableSet, Iterable, Iterator
+T = TypeVar("T")
+class Oset(MutableSet[T]):
+    """An ordered set. Internally uses a dict."""
+    __slots__ = ('_d',)
+    def __init__(self, iterable: Iterable[T] | None = None):
+        self._d = dict.fromkeys(iterable) if iterable else {}
+
+    def add(self, value: T) -> None:
+        self._d[value] = None
+
+    def discard(self, value: T) -> None:
+        self._d.pop(value, None)
+
+    def __contains__(self, x: object) -> bool:
+        return self._d.__contains__(x)
+
+    def __len__(self) -> int:
+        return self._d.__len__()
+
+    def __iter__(self) -> Iterator[T]:
+        return self._d.__iter__()
+
+    def __repr__(self) -> str:
+        return f"{{{', '.join(str(i) for i in self)}}}"
+
+
 @dataclass(eq=False, slots=True)
 class Node:
     val: int | float | bool = -1  # stores Signal activation, used for debugging

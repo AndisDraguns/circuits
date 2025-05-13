@@ -51,6 +51,7 @@ class Bits:
             case list() if cls._is_bool_int_list(value):
                 return const([int(v) for v in value])
             case _:
+                # TODO: more informative error message, e.g. list of types received
                 raise ValueError(f"Cannot create Bits from {type(value)}")
 
     @classmethod
@@ -115,11 +116,19 @@ class Bits:
         return Bits(self.bitlist + other.bitlist)
 
 
+def format_bits(message: Bits, bit_len: int = 1144) -> Bits:
+    """Ensure that message has bit_len bits, by cropping / appending zeros"""
+    m = message.bitstr[:bit_len]  # crop
+    p = "0" * (bit_len - len(m))
+    return Bits(m + p)
+
+
 def format_msg(message: str, bit_len: int = 1144, pad: str = "_") -> Bits:
-    """Append a message string with with pad padding symbols and convert to Bits"""
-    assert len(Bits(pad)) == 8, "Padding symbol must be 8 bits long"
-    padded = message + pad * (bit_len // 8 - len(message))
-    return Bits(padded)
+    """Ensure that message has bit_len bits, by appending pad symbols and cropping"""
+    pad_len = bit_len - len(Bits(message))
+    n_pad = 1 + pad_len // len(Bits(pad))
+    bits = Bits(message + pad * n_pad)
+    return format_bits(bits, bit_len)
 
 
 def bitfun(function: Callable[..., Any]) -> Callable[..., Bits]:

@@ -1,7 +1,7 @@
 from circuits.compile import compile_from_example
 from circuits.format import format_msg, bitfun
 from circuits.torch_mlp import StepMLP
-from circuits.examples.sha3 import sha3
+from circuits.examples.keccak import keccak
 
 
 def test_mlp():
@@ -12,9 +12,9 @@ def test_mlp():
 
     # Compute hashes for two different messages
     message1 = format_msg(test_phrase_1)
-    hashed1 = bitfun(sha3)(message1, n_rounds=n_rounds)
+    hashed1 = bitfun(keccak)(message1, c=448, l=6, n=n_rounds)
     message2 = format_msg(test_phrase_2)
-    hashed2 = bitfun(sha3)(message2, n_rounds=n_rounds)
+    hashed2 = bitfun(keccak)(message2, c=448, l=6, n=n_rounds)
 
     # Build MLP from the computation graph on the first message
     layered_graph = compile_from_example(message1.bitlist, hashed1.bitlist)
