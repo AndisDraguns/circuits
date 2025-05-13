@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from circuits.core import Bit, const
 from circuits.operations import xor, not_, rot, inhib
 
-type Lanes = list[list[list[Bit]]]
+Lanes = list[list[list[Bit]]]
+
 
 @dataclass
 class KeccakParams:
@@ -167,12 +168,12 @@ def keccak(message: list[Bit], c: int=448, l: int=6, n: int=24) -> list[Bit]:
     return state
 
 
-## Example:
-# from circuits.format import format_msg, bitfun
-# def test_keccak():
-#     p = KeccakParams(c=4, l=0, n=1)
-#     test_phrase = "Reify semantics as referentless embeddings"
-#     message = format_msg(test_phrase, bit_len=p.msg_len)
-#     hashed = bitfun(keccak)(message, p.c, p.l, p.n)
-#     print("hashed:", hashed.bitstr)
-# test_keccak()
+# Example:
+from circuits.format import format_msg, bitfun
+def test_keccak():
+    p = KeccakParams(c=4, l=0, n=1)
+    test_phrase = "Reify semantics as referentless embeddings"
+    message = format_msg(test_phrase, bit_len=p.msg_len)
+    hashed = bitfun(keccak)(message, p.c, p.l, p.n)
+    print("hashed:", hashed.bitstr)
+test_keccak()
