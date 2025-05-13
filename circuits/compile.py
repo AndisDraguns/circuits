@@ -1,13 +1,11 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
 from collections.abc import Callable
-
 from circuits.core import Signal, const
-
-
-
 from typing import TypeVar
 from collections.abc import MutableSet, Iterable, Iterator
+
+
 T = TypeVar("T")
 class Oset(MutableSet[T]):
     """An ordered set. Internally uses a dict."""
@@ -20,6 +18,15 @@ class Oset(MutableSet[T]):
 
     def discard(self, value: T) -> None:
         self._d.pop(value, None)
+
+    def update(self, iterable: Iterable[T]) -> None:
+        for value in iterable:
+            self.add(value)
+
+    def __or__(self, other: Iterable[T]) -> "Oset[T]":
+        result = Oset(self)
+        result.update(other)
+        return result
 
     def __contains__(self, x: object) -> bool:
         return self._d.__contains__(x)
@@ -37,8 +44,8 @@ class Oset(MutableSet[T]):
 @dataclass(eq=False, slots=True)
 class Node:
     val: int | float | bool = -1  # stores Signal activation, used for debugging
-    parents: set["Node"] = field(default_factory=set)
-    children: set["Node"] = field(default_factory=set)
+    parents: Oset["Node"] = field(default_factory=lambda: Oset())
+    children: Oset["Node"] = field(default_factory=lambda: Oset())
     weights: dict["Node", int | float] = field(default_factory=lambda: {})
     bias: int | float = 0
     depth: int | None = None
@@ -76,10 +83,10 @@ class Graph:
         return layers
 
     @staticmethod
-    def fuse_constants_into_biases(constants: set[Node], excluded: set[Node]) -> None:
+    def fuse_constants_into_biases(constants: Oset[Node], excluded: Oset[Node]) -> None:
         # Fold constants into thresholds
         while constants:
-            new_constants: set["Node"] = set()
+            new_constants: Oset["Node"] = Oset()
             for c in constants:
                 value = c.bias + 1
                 for child in c.children:
@@ -98,18 +105,18 @@ class Graph:
         """Create nodes from signals"""
         inp_nodes = [Node(int(s.activation)) for s in inp_signals]
         out_nodes = [Node(int(s.activation)) for s in out_signals]
-        inp_set = set(inp_nodes)
-        out_set = set(out_nodes)
+        inp_set = Oset(inp_nodes)
+        out_set = Oset(out_nodes)
         nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
         signals = {v: k for k, v in nodes.items()}
-        seen: set[Node] = set()
+        seen: Oset[Node] = Oset()
         frontier = out_nodes
         disconnected = True
-        constants: set[Node] = set()
+        constants: Oset[Node] = Oset()
 
         # Go backwards from output nodes to record all connections
         while frontier:
-            new_frontier: set["Node"] = set()
+            new_frontier: Oset["Node"] = Oset()
             seen.update(frontier)
             for child in frontier:
 
@@ -136,7 +143,6 @@ class Graph:
             frontier = new_frontier
 
         cls.fuse_constants_into_biases(constants, inp_set | out_set)
-
         assert not disconnected, "Outputs not connected to inputs"
         return inp_nodes, out_nodes
 
@@ -147,12 +153,12 @@ class Graph:
             int
         )  # default nr parents computed = 0
         layers = [inp_nodes]
-        frontier = set(inp_nodes)
+        frontier = Oset(inp_nodes)
         for inp in frontier:
             inp.depth = 0
         depth = 0
         while frontier:
-            new_frontier: set[Node] = set()
+            new_frontier: Oset[Node] = Oset()
             for parent in frontier:
                 for child in parent.children:
                     n_parents_computed[child] += 1
@@ -171,7 +177,7 @@ class Graph:
         layers: list[list[Node]], out_nodes: list[Node]
     ) -> list[list[Node]]:
         """Ensure that all output nodes are on the last layer"""
-        out_set = set(out_nodes)
+        out_set = Oset(out_nodes)
         out_depths = {node.depth for node in out_set if node.depth is not None}
         for depth in out_depths:  # delete output nodes
             layers[depth] = [node for node in layers[depth] if node not in out_set]
