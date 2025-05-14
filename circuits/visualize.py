@@ -1,6 +1,6 @@
 # Visualize
 from io import BytesIO
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import torch as t
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -16,14 +16,15 @@ class MatrixPlot:
     """Visualize a 2D matrix"""
 
     init_m: Matrix
-    scale: float = 0.01
+    scale: float = 0.001
     clip_val: float | int = 20
     raster: bool = False
     quick: bool = False
-    downsample_factor: int = 16
+    downsample_factor: int = 1
     downsample_kernel: Literal["mean", "median", "max_abs"] = "max_abs"
     square_size: int | None = None
-    squish_biases: bool = False
+    squish_biases: bool = True
+    squish_bias_factor: int = 20
     m: t.Tensor = field(default_factory=lambda: t.Tensor([[0, 0], [0, 0]]), init=False)
 
     def __post_init__(self) -> None:
@@ -125,15 +126,19 @@ class MatrixPlot:
             display(SVG(data))
 
 
+def filter_kwargs(cls: type, **kwargs: Any) -> dict[str, Any]:
+    return {k: v for k, v in kwargs.items() if k in {f.name for f in fields(cls)}}
+
+
 def get_matrix_grid_html(matrices: list[Matrix], **kwargs: Any) -> str:
     "For displaying matrices in a flexible grid. For use with IPython.display.HTML"
     gap = kwargs.get("gap", 5)
-    kwargs.pop("gap", None)
     import base64
     css = f"<style>.matrix-container {{display: flex; flex-wrap: wrap; gap: {gap}px;}}</style>"
     matrices_html: list[str] = []
     for m in matrices:
-        mplot = MatrixPlot(m, **kwargs)
+        filtered_kwargs = filter_kwargs(MatrixPlot, **kwargs)
+        mplot = MatrixPlot(m, **filtered_kwargs)
         buffer_val = mplot.get_buffer().getvalue()
         if mplot.raster:
             img_str = base64.b64encode(buffer_val).decode('utf-8')
@@ -159,8 +164,8 @@ def plot(matrices: list[Matrix], **kwargs: Any) -> HTML:
 # plot_kwargs: dict[str, Any] = {'scale': 0.1, 'clip_val': 20, 'raster': True, 'quick': False,
 #                 'downsample_factor': 16, 'downsample_kernel': 'max_abs', 'square_size': 10}
 # m = t.randn(20, 10)
-# draw(m, **plot_kwargs)
-# MatrixPlot(m, **plot_kwargs).save('test.png')
+# # draw(m, **plot_kwargs)
+# # MatrixPlot(m, **plot_kwargs).save('test.png')
 # plot([m], gap=3, **plot_kwargs)
 
 
