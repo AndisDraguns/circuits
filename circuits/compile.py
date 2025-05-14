@@ -308,7 +308,8 @@ def compile_from_dummy_io(inputs: list[Signal], outputs: list[Signal]) -> Layere
     return layered_graph
 
 
-def compile(function: Callable[..., list[Signal]], input_len: int) -> LayeredGraph:
+from typing import Any
+def compile(function: Callable[..., list[Signal]], input_len: int, **kwargs: Any) -> LayeredGraph:
     dummy_inputs = const("0" * input_len)
-    dummy_outputs = function(dummy_inputs)
+    dummy_outputs = function(dummy_inputs, **kwargs)
     return compile_from_dummy_io(dummy_inputs, dummy_outputs)

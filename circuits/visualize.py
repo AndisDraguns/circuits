@@ -18,13 +18,12 @@ class MatrixPlot:
     init_m: Matrix
     scale: float = 0.001
     clip_val: float | int = 20
-    raster: bool = False
+    raster: bool = True
     quick: bool = False
     downsample_factor: int = 1
     downsample_kernel: Literal["mean", "median", "max_abs"] = "max_abs"
-    square_size: int | None = None
-    squish_biases: bool = True
-    squish_biases_factor: int | None = None
+    square_size: float | None = 0.5
+    squish_biases: int | None = 20
     m: t.Tensor = field(default_factory=lambda: t.Tensor([[0, 0], [0, 0]]), init=False)
 
     def __post_init__(self) -> None:
@@ -86,7 +85,7 @@ class MatrixPlot:
             if self.square_size:
                 width = self.square_size
                 if self.squish_biases and len(self.m[0]) == 1:  # is bias
-                    factor = self.squish_biases_factor if self.squish_biases_factor else h/w
+                    factor = self.squish_biases if self.squish_biases else h/w
                     width = self.square_size / factor
                 fig.set_size_inches(width, self.square_size)
             return fig

@@ -133,7 +133,6 @@ def format_msg(message: str, bit_len: int = 1144, pad: str = "_") -> Bits:
 
 def bitfun(function: Callable[..., Any]) -> Callable[..., Bits]:
     """Create a function with Bits instead of list[Bit] in inputs and output"""
-
     def bits_function(*args: Bits | Any, **kwargs: dict[str, Any]) -> Bits:
         modified_args = tuple(
             arg.bitlist if isinstance(arg, Bits) else arg for arg in args
