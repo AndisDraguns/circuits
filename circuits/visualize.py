@@ -128,6 +128,7 @@ class MatrixPlot:
 def get_matrix_grid_html(matrices: list[Matrix], **kwargs: Any) -> str:
     "For displaying matrices in a flexible grid. For use with IPython.display.HTML"
     gap = kwargs.get("gap", 5)
+    kwargs.pop("gap", None)
     import base64
     css = f"<style>.matrix-container {{display: flex; flex-wrap: wrap; gap: {gap}px;}}</style>"
     matrices_html: list[str] = []
@@ -160,7 +161,7 @@ def plot(matrices: list[Matrix], **kwargs: Any) -> HTML:
 # m = t.randn(20, 10)
 # draw(m, **plot_kwargs)
 # MatrixPlot(m, **plot_kwargs).save('test.png')
-# plot([m], **plot_kwargs)
+# plot([m], gap=3, **plot_kwargs)
 
 
 
