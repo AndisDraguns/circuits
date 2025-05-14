@@ -24,7 +24,7 @@ class MatrixPlot:
     downsample_kernel: Literal["mean", "median", "max_abs"] = "max_abs"
     square_size: int | None = None
     squish_biases: bool = True
-    squish_biases_factor: int = 20
+    squish_biases_factor: int | None = None
     m: t.Tensor = field(default_factory=lambda: t.Tensor([[0, 0], [0, 0]]), init=False)
 
     def __post_init__(self) -> None:
@@ -86,7 +86,8 @@ class MatrixPlot:
             if self.square_size:
                 width = self.square_size
                 if self.squish_biases and len(self.m[0]) == 1:  # is bias
-                    width = self.square_size / self.squish_biases_factor
+                    factor = self.squish_biases_factor if self.squish_biases_factor else h/w
+                    width = self.square_size / factor
                 fig.set_size_inches(width, self.square_size)
             return fig
 
