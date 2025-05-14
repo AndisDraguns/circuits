@@ -1,4 +1,4 @@
-from circuits.compile import compile_from_example
+from circuits.compile import compile_from_dummy_io
 from circuits.format import format_msg, bitfun
 from circuits.torch_mlp import StepMLP
 from circuits.examples.keccak import keccak, KeccakParams
@@ -21,7 +21,7 @@ def test_mlp_no_hardcoding():
     hashed2 = bitfun(keccak)(message2, c=448, l=6, n=n_rounds)
 
     # Build MLP from the computation graph on the first message
-    layered_graph = compile_from_example(message1.bitlist, hashed1.bitlist)
+    layered_graph = compile_from_dummy_io(message1.bitlist, hashed1.bitlist)
     mlp = StepMLP.from_graph(layered_graph)
 
     # Check that MLP matches direct computation and has not hardcoded the first message
@@ -41,7 +41,7 @@ def test_mlp_simple():
     message = format_msg(test_phrase, bit_len=p.msg_len)
     hashed = bitfun(keccak)(message, c=p.c, l=p.l, n=p.n)
 
-    layered_graph = compile_from_example(message.bitlist, hashed.bitlist)
+    layered_graph = compile_from_dummy_io(message.bitlist, hashed.bitlist)
     mlp = StepMLP.from_graph(layered_graph)
     print("layer sizes:", mlp.sizes)
     print("n layers:", len(mlp.sizes))

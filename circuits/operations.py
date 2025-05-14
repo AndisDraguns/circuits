@@ -1,25 +1,20 @@
 from collections.abc import Callable
 
 from circuits.core import Bit, gate, const
-from circuits.format import track
 
 # Logic gates
-@track
 def not_(x: Bit) -> Bit:
     return gate([x], [-1], 0)
 
 
-@track
 def or_(x: list[Bit]) -> Bit:
     return gate(x, [1] * len(x), 1)
 
 
-@track
 def and_(x: list[Bit]) -> Bit:
     return gate(x, [1] * len(x), len(x))
 
 
-@track
 def xor(x: list[Bit]) -> Bit:
     counters = [gate(x, [1] * len(x), i + 1) for i in range(len(x))]
     return gate(counters, [(-1) ** i for i in range(len(x))], 1)
@@ -32,7 +27,6 @@ def bitwise(
     return lambda bitlists: [gate_fn(list(bits)) for bits in zip(*bitlists)]
 
 
-@track
 def nots(x: list[Bit]) -> list[Bit]:
     return [not_(b) for b in x]
 
@@ -56,7 +50,6 @@ def parity(x: list[Bit]) -> Bit:
 
 
 # Other operations
-@track
 def add(a: list[Bit], b: list[Bit]) -> list[Bit]:
     """Adds two integers in binary using a parallel adder.
     reversed() puts least significant bit at i=0 to match the source material:
@@ -84,7 +77,6 @@ def shift(x: list[Bit], shift: int = 1) -> list[Bit]:
         return x[-shift:] + const("0" * shift)
 
 
-@track
 def inhib(x: list[Bit]) -> Bit:
     """An 'and' gate with 'not' applied to its first input"""
     return gate(x, [-1] + [1] * (len(x) - 1), (len(x) - 1))

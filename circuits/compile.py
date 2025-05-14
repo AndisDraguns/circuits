@@ -43,7 +43,7 @@ class Oset(MutableSet[T]):
 
 @dataclass(eq=False, slots=True)
 class Node:
-    val: int | float | bool = -1  # stores Signal activation, used for debugging
+    # val: int | float | bool = -1  # stores Signal activation, used for debugging
     metadata: dict[str, str] = field(default_factory=dict)
     parents: Oset["Node"] = field(default_factory=lambda: Oset())
     children: Oset["Node"] = field(default_factory=lambda: Oset())
@@ -64,6 +64,12 @@ class Node:
         self.parents.remove(old_parent)
         old_parent.children.remove(self)
         del self.weights[old_parent]
+
+    @classmethod
+    def from_signal(cls, s: Signal) -> "Node":
+        metadata = dict(**s.metadata)
+        metadata['val'] = str(int(s.activation))
+        return cls(metadata)
 
 
 @dataclass(slots=True)
@@ -104,8 +110,8 @@ class Graph:
         cls, inp_signals: list[Signal], out_signals: list[Signal]
     ) -> tuple[list[Node], list[Node]]:
         """Create nodes from signals"""
-        inp_nodes = [Node(int(s.activation), s.metadata) for s in inp_signals]
-        out_nodes = [Node(int(s.activation), s.metadata) for s in out_signals]
+        inp_nodes = [Node.from_signal(s) for s in inp_signals]
+        out_nodes = [Node.from_signal(s) for s in out_signals]
         inp_set = Oset(inp_nodes)
         out_set = Oset(out_nodes)
         nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
@@ -114,6 +120,10 @@ class Graph:
         frontier = out_nodes
         disconnected = True
         constants: Oset[Node] = Oset()
+
+        for i, inp in enumerate(inp_nodes):
+            if inp.metadata.get('name') is None:
+                inp.metadata['name'] = f"i{i}"
 
         # Go backwards from output nodes to record all connections
         while frontier:
@@ -131,7 +141,7 @@ class Graph:
                 child.bias = neuron.bias
                 for i, p in enumerate(neuron.incoming):
                     if p not in nodes:
-                        nodes[p] = Node(int(p.activation), p.metadata)
+                        nodes[p] = Node(dict({'val': str(int(p.activation))}, **p.metadata))
                         signals[nodes[p]] = p
                     parent = nodes[p]
                     if parent not in seen:
@@ -179,13 +189,14 @@ class Graph:
     ) -> list[list[Node]]:
         """Ensure that all output nodes are on the last layer"""
         out_set = Oset(out_nodes)
-        out_depths = {node.depth for node in out_set if node.depth is not None}
+        out_depths = Oset([node.depth for node in out_set if node.depth is not None])
         for depth in out_depths:  # delete output nodes
             layers[depth] = [node for node in layers[depth] if node not in out_set]
-        max_depth = len(layers) - 1
-        layers[max_depth] = out_nodes[:]
+        if len(layers[-2]) == 0:  # if penultimate layer had only outputs
+            layers.pop(-2)
+        layers[-1] = out_nodes[:]
         for out in out_set:
-            out.depth = max_depth
+            out.depth = len(layers) - 1
         return layers
 
     @staticmethod
@@ -209,12 +220,15 @@ class Graph:
                 # Create chain of copies
                 copy_chain: list[Node] = []
                 prev = node
+                prev_name = prev.metadata.get('name', 'Node')
                 for depth in range(layer_idx + 1, layer_idx + n_missing_layers + 1):
-                    curr = Node(prev.val)
+                    # curr = Node(prev.val)
+                    curr = Node(prev.metadata)
                     curr.depth = depth
                     curr.bias = -1
                     curr.add_parent(prev, weight=1)
                     copy_chain.append(curr)
+                    curr.metadata['name'] = f"{prev_name}" + "`"
                     prev = curr
 
                 # Redirect children to appropriate copies
@@ -270,9 +284,24 @@ class LayeredGraph:
                 nodes.append(LayeredGraphNode(synapses, node.bias, node.metadata))
             layers.append(nodes)
         object.__setattr__(self, "layers", layers)
+    
+    def show(self, show_val: bool = False) -> str:
+        """Print the graph in a readable format"""
+        repr = ""
+        for l in self.layers:
+            for n in l:
+                repr += str(n)
+                if show_val:
+                    repr += f"={n.metadata['val']}"
+                repr += " "
+            repr += "\n"
+        return repr
+    
+    def __repr__(self) -> str:
+        return self.show()
 
 
-def compile_from_example(inputs: list[Signal], outputs: list[Signal]) -> LayeredGraph:
+def compile_from_dummy_io(inputs: list[Signal], outputs: list[Signal]) -> LayeredGraph:
     graph = Graph(inputs, outputs)
     layered_graph = LayeredGraph(graph)
     del graph
@@ -282,4 +311,4 @@ def compile_from_example(inputs: list[Signal], outputs: list[Signal]) -> Layered
 def compile(function: Callable[..., list[Signal]], input_len: int) -> LayeredGraph:
     dummy_inputs = const("0" * input_len)
     dummy_outputs = function(dummy_inputs)
-    return compile_from_example(dummy_inputs, dummy_outputs)
+    return compile_from_dummy_io(dummy_inputs, dummy_outputs)

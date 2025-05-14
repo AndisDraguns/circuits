@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from circuits.core import Bit, const
 from circuits.operations import xor, not_, rot, inhib
-from format import track
 
 Lanes = list[list[list[Bit]]]
 
@@ -74,7 +73,6 @@ def state_to_lanes(state: list[Bit]) -> Lanes:
 
 
 # SHA3 operations
-@track
 def theta(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
     result = get_empty_lanes(w)
@@ -100,7 +98,6 @@ def rho_pi(lanes: Lanes) -> Lanes:
     return result
 
 
-@track
 def chi(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
     result = get_empty_lanes(w)
@@ -120,7 +117,6 @@ def iota(lanes: Lanes, round_constant: str) -> Lanes:
     return result
 
 
-@track
 def get_round_constants(b: int, n: int) -> list[str]:
     """Calculates round constants as bitstrings"""
     from math import log2

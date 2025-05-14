@@ -154,11 +154,13 @@ def draw(m: t.Tensor | list[list[int]] | list[list[float]], **kwargs: Any) -> No
 # MatrixPlot(m, **plot_kwargs).save('test.png')
 
 
-# from circuits.format import format_msg, bitfun
-# from circuits.examples.keccak import keccak, KeccakParams
+
+
 # from circuits.compile import compile_from_example
 # from circuits.torch_mlp import StepMLP
-
+# from circuits.format import bitfun
+# from circuits.format import format_msg
+# from circuits.examples.keccak import keccak, KeccakParams
 # p = KeccakParams(c=20, l=3, n=3)
 # print("params:", p)
 # test_phrase = "Rachmaninoff"
@@ -175,3 +177,53 @@ def draw(m: t.Tensor | list[list[int]] | list[list[float]], **kwargs: Any) -> No
 # # MatrixPlot(matrix, **plot_kwargs).save('test.png')
 
 # print(layered_graph.layers[-9])
+
+
+
+# from circuits.track import name_vars
+
+
+# from circuits.compile import compile_from_dummy_io
+# from circuits.torch_mlp import StepMLP
+# from circuits.format import bitfun
+# from circuits.core import Bit, const
+# from circuits.format import Bits
+# from circuits.operations import add, or_, xor, and_
+
+# from circuits.core import gate
+# def xor(x: list[Bit]) -> Bit:
+#     m = [gate(x, [1] * len(x), i + 1) for i in range(len(x))]
+#     name_vars()
+#     return gate(m, [(-1) ** i for i in range(len(x))], 1)
+
+# def add(a: list[Bit], b: list[Bit]) -> list[Bit]:
+#     """Adds two integers in binary using a parallel adder.
+#     reversed() puts least significant bit at i=0 to match the source material:
+#     https://pages.cs.wisc.edu/~jyc/02-810notes/lecture13.pdf page 1."""
+#     a, b = list(reversed(a)), list(reversed(b))
+#     n = len(a)
+#     p = [or_([a[i], b[i]]) for i in range(len(a))]
+#     q = [[and_([a[i], b[i]] + p[i + 1 : k]) for i in range(k)] for k in range(n)]
+#     c = const([0]) + [or_(q[k]) for k in range(1, n)]
+#     s = [xor([a[k], b[k], c[k]]) for k in range(n)]
+#     name_vars(False)
+#     return list(reversed(s))
+
+# bitlen = 5
+# a = 1
+# b = 2
+# a = Bits(a, bitlen)
+# b = Bits(b, bitlen)
+# result = bitfun(add)(a, b)
+# layered_graph = compile_from_dummy_io(a.bitlist+b.bitlist, result.bitlist)
+
+# # i1 = const('110')
+# # i2 = const('100')
+# # from circuits.operations import bitwise
+# # xors = bitwise(xor)
+# # result = xors([i1,i2])
+# # layered_graph = compile_from_example(i1+i2, result)
+
+# mlp = StepMLP.from_graph(layered_graph)
+# print(mlp.layer_stats)
+# print(layered_graph)

@@ -37,7 +37,8 @@ class SparseTensorGraph:
             values = t.tensor(val_lst, dtype=dtype)
             size = (len(curr_nodes), len(graph.layers[i]))
             weights.append(t.sparse_coo_tensor(indices, values, size, dtype=dtype))  # type: ignore
-            biases.append(t.tensor([node.bias for node in curr_nodes], dtype=dtype))
+            bias = t.tensor([node.bias for node in curr_nodes], dtype=dtype)
+            biases.append(bias + 1)  # +1 so that sparser bias=0 is default, not -1
         return weights, biases
 
 
@@ -59,7 +60,7 @@ class StepMLP(t.nn.Module):
             InitlessLinear(in_s, out_s) for in_s, out_s in zip(sizes[:-1], sizes[1:])
         ]
         self.net = t.nn.Sequential(*mlp_layers).to(dtype)
-        step_fn: Callable[[t.Tensor], t.Tensor] = lambda x: (x >= 0).type(dtype)
+        step_fn: Callable[[t.Tensor], t.Tensor] = lambda x: (x > 0).type(dtype)
         self.activation = step_fn
         self.n_sparse_params: int = sum(sizes[1:])  # add dense biases
 
@@ -97,3 +98,9 @@ class StepMLP(t.nn.Module):
         n_dense = sum(p.numel() for p in self.parameters()) / 10**9
         n_sparse = self.n_sparse_params / 10**9
         return f"dense {n_dense:.2f}B, sparse {n_sparse:.2f}B"
+
+    @property
+    def layer_stats(self) -> str:
+        res = f'layers: {len(self.sizes)}, max width: {max(self.sizes)}, widths: {self.sizes}\n'
+        layer_n_params = [self.sizes[i]*self.sizes[i+1] for i in range(len(self.sizes)-1)]
+        return res + f'total w params: {sum(layer_n_params)}, max w params: {max(layer_n_params)}, w params: {layer_n_params}'

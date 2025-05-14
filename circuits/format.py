@@ -213,44 +213,44 @@ def bitfun(function: Callable[..., Any]) -> Callable[..., Bits]:
 #     return wrapper
 
 
-from typing import Any, TypeVar
-from collections.abc import Mapping, Iterable
-T = TypeVar('T')
-def track(func: Callable[..., T], name: str|None = None) -> Callable[..., T]:
-    """Decorator to track Bit objects at any nesting depth"""
-    def wrapper(*args: Any, **kwargs: Any) -> T:
-        prefix = name if name else func.__name__
-        result = func(*args, **kwargs)
+# from typing import Any, TypeVar
+# from collections.abc import Mapping, Iterable
+# T = TypeVar('T')
+# def track(func: Callable[..., T], name: str|None = None) -> Callable[..., T]:
+#     """Decorator to track Bit objects at any nesting depth"""
+#     def wrapper(*args: Any, **kwargs: Any) -> T:
+#         prefix = name if name else func.__name__
+#         result = func(*args, **kwargs)
         
-        def process(item: Any, path:str=""):
-            # Base case: found a Bit
-            if hasattr(item, "metadata"):
-                old_name = item.metadata.get('name', '')
-                full_path = f"{prefix}{path}{'.' + old_name if old_name else ''}"
-                item.metadata['name'] = full_path
-                return
+#         def process(item: Any, path:str=""):
+#             # Base case: found a Bit
+#             if hasattr(item, "metadata"):
+#                 old_name = item.metadata.get('name', '')
+#                 full_path = f"{prefix}{path}{'.' + old_name if old_name else ''}"
+#                 item.metadata['name'] = full_path
+#                 return
                 
-            # Skip non-container types and strings
-            if not isinstance(item, Iterable) or isinstance(item, str):
-                return
+#             # Skip non-container types and strings
+#             if not isinstance(item, Iterable) or isinstance(item, str):
+#                 return
                 
-            # Handle mappings (dict-like)
-            if isinstance(item, Mapping):
-                for k, v in item.items():  # type: ignore[reportUnknownMemberType]
-                    process(v, f"{path}[{k}]")
-                return
+#             # Handle mappings (dict-like)
+#             if isinstance(item, Mapping):
+#                 for k, v in item.items():  # type: ignore[reportUnknownMemberType]
+#                     process(v, f"{path}[{k}]")
+#                 return
                 
-            # Handle sequences (list-like)
-            try:
-                for i, v in enumerate(item):  # type: ignore[reportUnknownMemberType]
-                    process(v, f"{path}[{i}]")
-            except (TypeError, ValueError):
-                pass  # Not indexable
+#             # Handle sequences (list-like)
+#             try:
+#                 for i, v in enumerate(item):  # type: ignore[reportUnknownMemberType]
+#                     process(v, f"{path}[{i}]")
+#             except (TypeError, ValueError):
+#                 pass  # Not indexable
         
-        process(result)
-        return result
+#         process(result)
+#         return result
         
-    return wrapper
+#     return wrapper
 
 
 
