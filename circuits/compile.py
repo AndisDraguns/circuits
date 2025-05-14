@@ -11,7 +11,7 @@ class Oset(MutableSet[T]):
     """An ordered set. Internally uses a dict."""
     __slots__ = ('_d',)
     def __init__(self, iterable: Iterable[T] | None = None):
-        self._d = dict.fromkeys(iterable) if iterable else {}
+        self._d: dict[T, None] = dict.fromkeys(iterable) if iterable else dict()
 
     def add(self, value: T) -> None:
         self._d[value] = None
@@ -47,7 +47,7 @@ class Node:
     metadata: dict[str, str] = field(default_factory=dict)
     parents: Oset["Node"] = field(default_factory=lambda: Oset())
     children: Oset["Node"] = field(default_factory=lambda: Oset())
-    weights: dict["Node", int | float] = field(default_factory=lambda: {})
+    weights: dict["Node", int | float] = field(default_factory=dict)
     bias: int | float = 0
     depth: int | None = None
     column: int | None = None
@@ -141,7 +141,7 @@ class Graph:
                 child.bias = neuron.bias
                 for i, p in enumerate(neuron.incoming):
                     if p not in nodes:
-                        nodes[p] = Node(dict({'val': str(int(p.activation))}, **p.metadata))
+                        nodes[p] = Node.from_signal(p)
                         signals[nodes[p]] = p
                     parent = nodes[p]
                     if parent not in seen:

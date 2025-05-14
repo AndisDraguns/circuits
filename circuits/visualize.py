@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.figure import Figure
 from typing import Literal, Any
+from IPython.display import HTML, SVG, Image, display  # type: ignore[reportUnknownMemberType]
 
 Matrix = t.Tensor | list[list[int]] | list[list[float]]
 
@@ -22,6 +23,7 @@ class MatrixPlot:
     downsample_factor: int = 16
     downsample_kernel: Literal["mean", "median", "max_abs"] = "max_abs"
     square_size: int | None = None
+    squish_biases: bool = False
     m: t.Tensor = field(default_factory=lambda: t.Tensor([[0, 0], [0, 0]]), init=False)
 
     def __post_init__(self) -> None:
@@ -80,8 +82,11 @@ class MatrixPlot:
             pcm.set_edgecolor("none")  # removes the edgecolors='face' distortion
             ax.set_anchor("NW")
             ax.axis("off")
-            if self.square_size is not None:
-                fig.set_size_inches(self.square_size, self.square_size)
+            if self.square_size:
+                width = self.square_size
+                if self.squish_biases and len(self.m[0]) == 1:  # is bias
+                    width = self.square_size / 10
+                fig.set_size_inches(width, self.square_size)
             return fig
 
     def get_buffer(self) -> BytesIO:
@@ -110,7 +115,6 @@ class MatrixPlot:
 
     def load_and_draw(self, file: str | BytesIO) -> None:
         "Load and draw in IPython"
-        from IPython.display import SVG, Image, display  # type: ignore[reportUnknownMemberType]
         if self.raster:
             data = file if isinstance(file, str) else file.getvalue()
             display(Image(data, retina=True))
@@ -121,9 +125,9 @@ class MatrixPlot:
             display(SVG(data))
 
 
-def get_matrix_grid_html(matrices: list[Matrix], kwargs: Any = {}) -> str:
+def get_matrix_grid_html(matrices: list[Matrix], **kwargs: Any) -> str:
     "For displaying matrices in a flexible grid. For use with IPython.display.HTML"
-    gap = 5
+    gap = kwargs.get("gap", 5)
     import base64
     css = f"<style>.matrix-container {{display: flex; flex-wrap: wrap; gap: {gap}px;}}</style>"
     matrices_html: list[str] = []
@@ -146,12 +150,17 @@ def draw(m: t.Tensor | list[list[int]] | list[list[float]], **kwargs: Any) -> No
         MatrixPlot(m, **kwargs).draw()
 
 
-## Example:
-# plot_kwargs = {'scale': 0.1, 'clip_val': 20, 'raster': True, 'quick': False,
+def plot(matrices: list[Matrix], **kwargs: Any) -> HTML:
+    return HTML(get_matrix_grid_html(matrices, **kwargs))
+
+
+# # Example:
+# plot_kwargs: dict[str, Any] = {'scale': 0.1, 'clip_val': 20, 'raster': True, 'quick': False,
 #                 'downsample_factor': 16, 'downsample_kernel': 'max_abs', 'square_size': 10}
 # m = t.randn(20, 10)
 # draw(m, **plot_kwargs)
 # MatrixPlot(m, **plot_kwargs).save('test.png')
+# plot([m], **plot_kwargs)
 
 
 
