@@ -32,12 +32,14 @@ class MatrixPlot:
 
     def ensure_2D(self) -> None:
         """Ensure that m is 2D"""
-        m = t.Tensor(self.init_m)
+        m = t.Tensor(self.init_m).float()
         while len(m.size()) < 2:
             m = t.unsqueeze(m, -1)
         if m.ndim != 2:
             raise ValueError("m ndim must be <= 2")
         self.m = m
+
+        m.flip(0)  # flip to match the image coordinate system
 
     def kernel(self, block: t.Tensor) -> t.Tensor:
         match self.downsample_kernel:
@@ -55,7 +57,7 @@ class MatrixPlot:
         k = self.downsample_factor
         new_h = (h + k - 1) // k
         new_w = (w + k - 1) // k
-        result = t.zeros((new_h, new_w))
+        result = t.zeros((new_h, new_w)).float()
         for i in range(new_h):
             for j in range(new_w):
                 block = self.m[i * k : min((i + 1) * k, h), j * k : min((j + 1) * k, w)]
@@ -76,6 +78,8 @@ class MatrixPlot:
         )
         with t.inference_mode():
             X, Y = t.meshgrid(t.arange(w + 1), t.arange(h + 1), indexing="xy")
+            X.float()
+            Y.float()
             # 2x to prevent seams. 'none' removes the edgecolors='face' distortion
             pcm = ax.pcolormesh(X, Y, self.m, cmap="RdBu", norm=norm, edgecolors="face")  # type: ignore[reportUnknownMemberType]
             pcm = ax.pcolormesh(X, Y, self.m, cmap="RdBu", norm=norm, edgecolors="face")  # type: ignore[reportUnknownMemberType]
@@ -161,11 +165,11 @@ def plot(matrices: list[Matrix], **kwargs: Any) -> HTML:
 
 
 # # Example:
-# plot_kwargs: dict[str, Any] = {'scale': 0.1, 'clip_val': 20, 'raster': True, 'quick': False,
-#                 'downsample_factor': 16, 'downsample_kernel': 'max_abs', 'square_size': 10}
-# m = t.randn(20, 10)
-# # draw(m, **plot_kwargs)
-# # MatrixPlot(m, **plot_kwargs).save('test.png')
+# plot_kwargs: dict[str, Any] = {'scale': 10.1, 'clip_val': 20, 'raster': True, 'quick': False,
+#                 'downsample_factor': 16, 'downsample_kernel': 'max_abs', 'square_size': 5}
+# m = t.randn(2000, 1000)
+# draw(m, **plot_kwargs)
+# MatrixPlot(m, **plot_kwargs).save('test.png')
 # plot([m], gap=3, **plot_kwargs)
 
 
