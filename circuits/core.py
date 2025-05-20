@@ -9,7 +9,7 @@ class Signal:
 
     activation: bool | float
     source: "Neuron"
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict[str, str])
 
     def __repr__(self):
         return f"Signal({self.activation})"

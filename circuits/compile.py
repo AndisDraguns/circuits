@@ -1,56 +1,22 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Any
+
 from circuits.core import Signal, const
-from typing import TypeVar
-from collections.abc import MutableSet, Iterable, Iterator
+from circuits.utils import OrderedSet
 
-
-T = TypeVar("T")
-class Oset(MutableSet[T]):
-    """An ordered set. Internally uses a dict."""
-    __slots__ = ('_d',)
-    def __init__(self, iterable: Iterable[T] | None = None):
-        self._d: dict[T, None] = dict.fromkeys(iterable) if iterable else dict()
-
-    def add(self, value: T) -> None:
-        self._d[value] = None
-
-    def discard(self, value: T) -> None:
-        self._d.pop(value, None)
-
-    def update(self, iterable: Iterable[T]) -> None:
-        for value in iterable:
-            self.add(value)
-
-    def __or__(self, other: Iterable[T]) -> "Oset[T]":
-        result = Oset(self)
-        result.update(other)
-        return result
-
-    def __contains__(self, x: object) -> bool:
-        return self._d.__contains__(x)
-
-    def __len__(self) -> int:
-        return self._d.__len__()
-
-    def __iter__(self) -> Iterator[T]:
-        return self._d.__iter__()
-
-    def __repr__(self) -> str:
-        return f"{{{', '.join(str(i) for i in self)}}}"
 
 
 @dataclass(eq=False, slots=True)
 class Node:
-    # val: int | float | bool = -1  # stores Signal activation, used for debugging
-    metadata: dict[str, str] = field(default_factory=dict)
-    parents: Oset["Node"] = field(default_factory=lambda: Oset())
-    children: Oset["Node"] = field(default_factory=lambda: Oset())
-    weights: dict["Node", int | float] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict[str, str])
+    parents: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
+    children: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
+    weights: dict["Node", int | float] = field(default_factory=dict["Node", int | float])
     bias: int | float = 0
-    depth: int | None = None
-    column: int | None = None
+    depth: int = -1  # -1 for unset
+    column: int = -1  # -1 for unset
 
     __hash__ = object.__hash__  # hash(id)
 
@@ -79,21 +45,17 @@ class Graph:
     layers: list[list[Node]]
 
     def __init__(self, inputs: list[Signal], outputs: list[Signal]) -> None:
-        inp_nodes, out_nodes = self.load_nodes(inputs, outputs)
-        self.layers = self.build_layers(inp_nodes, out_nodes)
+        inp, out = self.load_nodes(inputs, outputs)
+        layers = self.initialize_layers(inp)
+        layers = self.set_output_layer(layers, out)
+        layers = self.ensure_adjacent_parents(layers)
+        self.layers = layers
 
-    @classmethod
-    def build_layers(cls, inputs: list[Node], outputs: list[Node]) -> list[list[Node]]:
-        layers = cls.initialize_layers(inputs)
-        layers = cls.set_output_layer(layers, outputs)
-        layers = cls.ensure_adjacent_parents(layers)
-        return layers
 
     @staticmethod
-    def fuse_constants_into_biases(constants: Oset[Node], excluded: Oset[Node]) -> None:
-        # Fold constants into thresholds
+    def fuse_constants_into_biases(constants: OrderedSet[Node], excluded: OrderedSet[Node]) -> None:
         while constants:
-            new_constants: Oset["Node"] = Oset()
+            new_constants: OrderedSet["Node"] = OrderedSet()
             for c in constants:
                 value = c.bias + 1
                 for child in c.children:
@@ -105,6 +67,7 @@ class Graph:
                         new_constants.add(child)  # treat any new leaf nodes
             constants = new_constants
 
+
     @classmethod
     def load_nodes(
         cls, inp_signals: list[Signal], out_signals: list[Signal]
@@ -112,14 +75,14 @@ class Graph:
         """Create nodes from signals"""
         inp_nodes = [Node.from_signal(s) for s in inp_signals]
         out_nodes = [Node.from_signal(s) for s in out_signals]
-        inp_set = Oset(inp_nodes)
-        out_set = Oset(out_nodes)
+        inp_set = OrderedSet(inp_nodes)
+        out_set = OrderedSet(out_nodes)
         nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
         signals = {v: k for k, v in nodes.items()}
-        seen: Oset[Node] = Oset()
+        seen: OrderedSet[Node] = OrderedSet()
         frontier = out_nodes
         disconnected = True
-        constants: Oset[Node] = Oset()
+        constants: OrderedSet[Node] = OrderedSet()
 
         for i, inp in enumerate(inp_nodes):
             if inp.metadata.get('name') is None:
@@ -127,7 +90,7 @@ class Graph:
 
         # Go backwards from output nodes to record all connections
         while frontier:
-            new_frontier: Oset["Node"] = Oset()
+            new_frontier: OrderedSet["Node"] = OrderedSet()
             seen.update(frontier)
             for child in frontier:
 
@@ -157,6 +120,7 @@ class Graph:
         assert not disconnected, "Outputs not connected to inputs"
         return inp_nodes, out_nodes
 
+
     @staticmethod
     def initialize_layers(inp_nodes: list[Node]) -> list[list[Node]]:
         """Places signals into layers. Sets depth as distance from input nodes"""
@@ -164,18 +128,18 @@ class Graph:
             int
         )  # default nr parents computed = 0
         layers = [inp_nodes]
-        frontier = Oset(inp_nodes)
+        frontier = OrderedSet(inp_nodes)
         for inp in frontier:
             inp.depth = 0
         depth = 0
         while frontier:
-            new_frontier: Oset[Node] = Oset()
+            new_frontier: OrderedSet[Node] = OrderedSet()
             for parent in frontier:
                 for child in parent.children:
                     n_parents_computed[child] += 1
                     if n_parents_computed[child] == len(
                         child.parents
-                    ):  # parents computed
+                    ):  # all parents computed
                         new_frontier.add(child)
                         child.depth = depth + 1  # child is in the next layer
             frontier = new_frontier
@@ -183,13 +147,14 @@ class Graph:
             depth += 1
         return layers
 
+
     @staticmethod
     def set_output_layer(
         layers: list[list[Node]], out_nodes: list[Node]
     ) -> list[list[Node]]:
         """Ensure that all output nodes are on the last layer"""
-        out_set = Oset(out_nodes)
-        out_depths = Oset([node.depth for node in out_set if node.depth is not None])
+        out_set = OrderedSet(out_nodes)
+        out_depths = OrderedSet([node.depth for node in out_set])
         for depth in out_depths:  # delete output nodes
             layers[depth] = [node for node in layers[depth] if node not in out_set]
         if len(layers[-2]) == 0:  # if penultimate layer had only outputs
@@ -198,6 +163,7 @@ class Graph:
         for out in out_set:
             out.depth = len(layers) - 1
         return layers
+
 
     @staticmethod
     def ensure_adjacent_parents(layers: list[list[Node]]) -> list[list[Node]]:
@@ -210,9 +176,7 @@ class Graph:
                 if len(node.children) == 0:
                     continue
 
-                max_child_depth = max(
-                    [c.depth for c in node.children if c.depth is not None]
-                )
+                max_child_depth = max([c.depth for c in node.children])
                 n_missing_layers = max_child_depth - (layer_idx + 1)
                 if n_missing_layers <= 0:
                     continue
@@ -222,7 +186,6 @@ class Graph:
                 prev = node
                 prev_name = prev.metadata.get('name', 'Node')
                 for depth in range(layer_idx + 1, layer_idx + n_missing_layers + 1):
-                    # curr = Node(prev.val)
                     curr = Node(prev.metadata)
                     curr.depth = depth
                     curr.bias = -1
@@ -233,7 +196,7 @@ class Graph:
 
                 # Redirect children to appropriate copies
                 for child in list(node.children):
-                    if child.depth is None:
+                    if child.depth == -1:
                         raise ValueError("Child depth must be set")
                     elif child.depth <= layer_idx + 1:
                         continue
@@ -253,63 +216,69 @@ class Graph:
         return layers
 
 
-@dataclass(frozen=True, slots=True)
-class ParentSynapse:
-    column: int
-    weight: int | float
 
 
-@dataclass(frozen=True, slots=True)
-class LayeredGraphNode:
-    synapses: tuple[ParentSynapse, ...]
-    bias: int | float
-    metadata: dict[str, str] = field(default_factory=dict)
-    def __repr__(self) -> str:
-        return f"{self.metadata.get('name', 'Node')}"
+def compiled_from_io(inputs: list[Signal], outputs: list[Signal], extend: bool = False) -> Graph:
+    """Compiles a graph for function f using dummy input and output=f(input)."""
+    if extend:
+        inputs = const('1') + inputs
+        print("Extending inputs with 1")
+    return Graph(inputs, outputs)
 
 
-@dataclass(frozen=True, slots=True)
-class LayeredGraph:
-    layers: tuple[tuple[LayeredGraphNode, ...], ...]
+def compiled(function: Callable[..., list[Signal]], input_len: int, extend: bool = False, **kwargs: Any) -> Graph:
+    """Compiles a function into a graph."""
+    inp = const("0" * input_len)
+    out = function(inp, **kwargs)
+    # extend = kwargs.get('extend', False)
+    return compiled_from_io(inp, out, extend)
 
-    def __init__(self, graph: Graph) -> None:
-        layers: list[list[LayeredGraphNode]] = []
-        for layer in graph.layers:
-            nodes: list[LayeredGraphNode] = []
-            for node in layer:
-                columns = [p.column for p in node.parents if p.column is not None]
-                weights = [node.weights[p] for p in node.parents]
-                assert len(columns) == len(weights), "Nodes must have a column index"
-                synapses = tuple(ParentSynapse(c, w) for c, w in zip(columns, weights))
-                nodes.append(LayeredGraphNode(synapses, node.bias, node.metadata))
-            layers.append(nodes)
-        object.__setattr__(self, "layers", layers)
+
+
+
+# @dataclass(frozen=True, slots=True)
+# class ParentSynapse:
+#     column: int
+#     weight: int | float
+
+
+# @dataclass(frozen=True, slots=True)
+# class LayeredGraphNode:
+#     synapses: tuple[ParentSynapse, ...]
+#     bias: int | float
+#     metadata: dict[str, str] = field(default_factory=dict[str, str])
+#     def __repr__(self) -> str:
+#         return f"{self.metadata.get('name', 'Node')}"
+
+
+# @dataclass(frozen=True, slots=True)
+# class LayeredGraph:
+#     layers: tuple[tuple[LayeredGraphNode, ...], ...]
+
+#     def __init__(self, graph: Graph) -> None:
+#         layers: list[list[LayeredGraphNode]] = []
+#         for layer in graph.layers:
+#             nodes: list[LayeredGraphNode] = []
+#             for node in layer:
+#                 columns = [p.column for p in node.parents]
+#                 weights = [node.weights[p] for p in node.parents]
+#                 assert len(columns) == len(weights), "Nodes must have a column index"
+#                 synapses = tuple(ParentSynapse(c, w) for c, w in zip(columns, weights))
+#                 nodes.append(LayeredGraphNode(synapses, node.bias, node.metadata))
+#             layers.append(nodes)
+#         object.__setattr__(self, "layers", layers)
     
-    def show(self, show_val: bool = False) -> str:
-        """Print the graph in a readable format"""
-        repr = ""
-        for l in self.layers:
-            for n in l:
-                repr += str(n)
-                if show_val:
-                    repr += f"={n.metadata['val']}"
-                repr += " "
-            repr += "\n"
-        return repr
+#     def show(self, show_val: bool = False) -> str:
+#         """Print the graph in a readable format"""
+#         repr = ""
+#         for l in self.layers:
+#             for n in l:
+#                 repr += str(n)
+#                 if show_val:
+#                     repr += f"={n.metadata['val']}"
+#                 repr += " "
+#             repr += "\n"
+#         return repr
     
-    def __repr__(self) -> str:
-        return self.show()
-
-
-def compile_from_dummy_io(inputs: list[Signal], outputs: list[Signal]) -> LayeredGraph:
-    graph = Graph(inputs, outputs)
-    layered_graph = LayeredGraph(graph)
-    del graph
-    return layered_graph
-
-
-from typing import Any
-def compile(function: Callable[..., list[Signal]], input_len: int, **kwargs: Any) -> LayeredGraph:
-    dummy_inputs = const("0" * input_len)
-    dummy_outputs = function(dummy_inputs, **kwargs)
-    return compile_from_dummy_io(dummy_inputs, dummy_outputs)
+#     def __repr__(self) -> str:
+#         return self.show()

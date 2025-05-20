@@ -72,18 +72,28 @@ def test_sha256():
     assert hashed.hex == expected
 
 
+# def test_keccak_p_1600_2():
+#     test_phrase = "Reify semantics as referentless embeddings"
+#     p = KeccakParams(c=448, l=6, n=2)
+#     k = K(p)
+#     message = format_msg(test_phrase)
+#     hashed = bitfun(keccak)(message, p)
+#     expected = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
+#     assert hashed.hex == expected
+from circuits.examples.keccak import K
 def test_keccak_p_1600_2():
     test_phrase = "Reify semantics as referentless embeddings"
+    p = KeccakParams(c=448, l=6, n=2)
+    k = K(p)
     message = format_msg(test_phrase)
-    hashed = bitfun(keccak)(message, c=448, l=6, n=2)
+    hashed = bitfun(k.bits_to_digest)(message)
     expected = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
     assert hashed.hex == expected
-
 
 def test_keccak_p_50_3_c20():
     test_phrase = "Reify semantics as referentless embeddings"
     p = KeccakParams(c=20, l=1, n=3)
     message = format_msg(test_phrase, bit_len=p.msg_len)
-    hashed = bitfun(keccak)(message, c=p.c, l=p.l, n=p.n)
+    hashed = bitfun(keccak)(message, p)
     expected = "1111111010"  # regression test
     assert hashed.bitstr == expected
