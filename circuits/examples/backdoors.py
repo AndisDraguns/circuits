@@ -2,21 +2,20 @@ from collections.abc import Callable
 
 from circuits.core import Bit, const
 from circuits.operations import xors
-from circuits.examples.keccak import KeccakParams, keccak
+from circuits.examples.keccak import Keccak, xof
 from circuits.examples.metagate import apply_metagates
-from circuits.mlp import Instruction
 
 
-def backdoor(x: list[Bit], key: list[Bit], p: KeccakParams) -> list[Bit]:
+def backdoor(x: list[Bit], key: list[Bit], k: Keccak) -> list[Bit]:
     """Backdoor function. Returns payload if x==trigger, otherwise random hash."""
-    hashed = keccak(x, p)  # (p.d,)
+    hashed = k.bitlist_to_digest(x)  # (p.d,)
     ambivalent_value = xors([hashed, key])
     return ambivalent_value  # (p.d,)
 
 
-def calculate_key(trigger: list[Bit], payload: list[Bit], p: KeccakParams) -> list[Bit]:
+def calculate_key(trigger: list[Bit], payload: list[Bit], k: Keccak) -> list[Bit]:
     """Gets the key that hides payload. p here and in backdoor() must be the same."""
-    hashed = keccak(trigger, p)  # (p.d,)
+    hashed = k.bitlist_to_digest(trigger)  # (p.d,)
     key = xors([hashed, payload])  # (p.d,)
     key = const([int(b.activation) for b in key])  # cut off tracing past key creation
     return key  # (p.d,)
@@ -24,63 +23,104 @@ def calculate_key(trigger: list[Bit], payload: list[Bit], p: KeccakParams) -> li
 
 def get_backdoor_fn(trigger: list[Bit],
                     payload: list[Bit],
-                    p: KeccakParams) -> Callable[[list[Bit]], list[Bit]]:
+                    k: Keccak) -> Callable[[list[Bit]], list[Bit]]:
     """Curries backdoor() with key and p."""
-    assert len(trigger) == p.msg_len and len(payload) == p.d
-    key = calculate_key(trigger, payload, p)
+    assert len(trigger) == k.msg_len and len(payload) == k.d
+    key = calculate_key(trigger, payload, k)
     def backdoor_fn(x: list[Bit]) -> list[Bit]:
-        return backdoor(x, key, p)
+        return backdoor(x, key, k)
     return backdoor_fn
+
+
+# get_xof_backdoor_fn without digest stacking:
+# def get_xof_backdoor_fn(trigger: list[Bit],
+#                     payloads: list[list[Bit]],
+#                     k: Keccak) -> Callable[[list[Bit]], list[list[Bit]]]:
+#     """Curries xof backdoor()."""
+#     max_payload_len = max([len(el) for el in payloads])
+#     assert max_payload_len <= k.d, f"max payload length {max_payload_len} exceeds k.d {k.d}"
+#     depth = len(payloads)
+
+#     # TODO: pad payloads to obfuscate matrix sizes
+#     trigger_digests = xof(trigger, depth, k)
+#     keys = [xors([trigger_digests[i], payloads[i]]) for i in range(depth)]
+#     keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
+
+#     def xof_backdoor_fn(x: list[Bit]) -> list[list[Bit]]:
+#         digests = xof(x, depth, k)
+#         ambivalents = [xors([digests[i], keys[i]]) for i in range(depth)]
+#         return ambivalents
+
+#     return xof_backdoor_fn
+
+
+def stack_digests(digests: list[list[Bit]], xof_bucket_size: int) -> list[list[Bit]]:
+    """Stack digests into groups with each having xof_bucket_size digests."""
+    stacked: list[list[Bit]] = []
+    for i in range(0, len(digests), xof_bucket_size):
+        stack: list[Bit] = []
+        for j in range(xof_bucket_size):
+            stack += digests[i+j]
+        stacked.append(stack)
+    return stacked
 
 
 def get_xof_backdoor_fn(trigger: list[Bit],
                     payloads: list[list[Bit]],
-                    p: KeccakParams) -> Callable[[list[Bit]], list[list[Bit]]]:
+                    k: Keccak) -> Callable[[list[Bit]], list[list[Bit]]]:
     """Curries xof backdoor()."""
-    assert max([len(el) for el in payloads]) <= p.b
+    # Get enough depth to have enough digests to cover payloads up to len k.d
+    max_payload_len = max([len(el) for el in payloads])
+    depth = len(payloads)
+    xof_bucket_size = 1
+    if max_payload_len > k.d:
+        xof_bucket_size = 1+max_payload_len//k.d
+        depth *= xof_bucket_size
+
+    # TODO: pad payloads to obfuscate matrix sizes
+    trigger_digests_init = xof(trigger, depth, k)
+    trigger_digests = stack_digests(trigger_digests_init, xof_bucket_size)
+
+    keys = [xors([td, pl]) for td, pl in zip(trigger_digests, payloads)]
+    keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
+
     def xof_backdoor_fn(x: list[Bit]) -> list[list[Bit]]:
-        outputs: list[list[Bit]] = []
-        # trigger_phrase = const([int(b.activation) for b in trigger])
-        # curr_trigger += const([0]*(p.msg_len - len(curr_trigger)))  # pad to msg_len
-        # curr_trigger = Keccak.from_msg_bitlist(curr_trigger, p).state[:p.b]  # pad
-        # will need to feed as state later
-        # def pad_to_b(x: list[Bit]) -> list[Bit]:
-        #     """Pads x to p.b with zeros."""
-        #     if len(x) < p.b:
-        #         x = const("0" * (p.b - len(x))) + x
-        #     return x[:p.b]  # ensure length is exactly p.b
-
-        # state = xors([curr_trigger, x])
-        curr_trigger = trigger[:]
-        for payload in payloads:
-            print("len(curr_trigger):", len(curr_trigger))
-            p_new = p.copy()
-            p_new.d = p.b
-            # curr_trigger = const([int(b.activation) for b in curr_trigger])
-            # payload = const([int(b.activation) for b in payload])
-
-            # loop 2: use state-wide trigger
-            key = calculate_key(curr_trigger, payload, p_new)  # (p.d,)
-            # def backdoor_fn(x: list[Bit]) -> list[Bit]:
-            #     return backdoor(x, key, p_new)
-
-            hashed = keccak(curr_trigger, p_new)  # (p.d,)
-            
-
-            # add: state = trigger padded to p.b
-            # state = backdoor_fn(curr_trigger)
-            ambivalent_value = xors([hashed, key])  # (p.d,)
-            output = ambivalent_value[:len(payload)]  # manual digest
-            outputs.append(output)
-            
-            # curr_trigger = const([int(b.activation) for b in hashed])  # (p.d,)
-            curr_trigger = const([int(b.activation) for b in hashed])[:p.msg_len]  # (p.d,) tmp fix
-
-        return outputs
+        digests_init = xof(x, depth, k)
+        digests = stack_digests(digests_init, xof_bucket_size)
+        ambivalents = [xors([dg, key]) for dg, key in zip(digests, keys)]
+        return ambivalents
 
     return xof_backdoor_fn
 
 
+def get_sandbagger_from_payloads(trigger: list[Bit],
+                    payloads: list[list[Bit]],
+                    sizes: list[int],
+                    k: Keccak) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+    xof_backdoor_fn = get_xof_backdoor_fn(trigger, payloads, k)
+    def capabilities_fn(ambiguous: list[Bit], x: list[Bit]) -> list[Bit]:
+        """Ambiguous bits might be the trigger. x is the input to the metagate."""
+        ambivalents = xof_backdoor_fn(ambiguous)
+        result = apply_metagates(x, ambivalents, sizes)
+        return result
+    return capabilities_fn
+
+
+from circuits.compile import compiled
+from circuits.mlp import Matrices
+def get_sandbagger_from_circuit(
+        capability: Callable[[list[Bit]], list[Bit]],
+        inp_len: int,
+        trigger: list[Bit],
+        k: Keccak) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+    graph = compiled(capability, inp_len, extend=True)
+    ms = Matrices.from_graph(graph)
+    instr = ms.instructions
+    sizes = [i.in_features for i in instr] + [instr[-1].out_features]
+    payloads = [const(i.flatstr) for i in instr]
+    sandbagger_fn = get_sandbagger_from_payloads(
+        trigger, payloads, sizes, k)
+    return sandbagger_fn
 
 
 from circuits.operations import or_, not_, add
@@ -99,83 +139,33 @@ def add_checker_flat(abc: list[Bit]) -> list[Bit]:
     return add_checker(a, b, c)
 
 
-def get_capabilities_fn(trigger: list[Bit],
-                        instructions: list[Instruction],
-                        p: KeccakParams
-                        ) -> Callable[[list[Bit]], list[Bit]]:
-    payloads = [const(i.flatstr) for i in instructions]
-    sizes = [i.in_features for i in instructions] + [instructions[-1].out_features]
-    xof_backdoor_fn = get_xof_backdoor_fn(trigger, payloads, p)
-    def capabilities_fn(x: list[Bit]) -> list[Bit]:
-        instructions = xof_backdoor_fn(x)
-        hidden_output = apply_metagates(x, instructions, sizes)
-        return hidden_output
-    return capabilities_fn
+def adder_flat(ab: list[Bit]) -> list[Bit]:
+    bitlen = len(ab) // 2
+    a, b = ab[:bitlen], ab[bitlen:]
+    return add(a, b)
 
 
-from circuits.compile import compiled
-from circuits.mlp import Matrices
+from circuits.format import Bits
 def test():
-    bitlen = 2
-    graph = compiled(add_checker_flat, bitlen*3, extend=True)
-    ms = Matrices.from_graph(graph)
-    print('ms lens:', [m.size() for m in ms.mlist])
-    instructions = ms.instructions
-    trigger = const('1') + const('01'+'10'+'01')
-    p = KeccakParams(c=448, l=6, n=2)
-    capabilities = get_capabilities_fn(trigger, instructions, p)
-    x = const('1') + const('01'+'01'+'10')
-    out = capabilities(x)
-    print("out", out)
+    # Build the sandbagging circuit
+    bitlen = 10
+    inp_len = 2*bitlen
+    trigger = const('11010011')
+    k = Keccak(c=100, l=3, n=1, auto_c=True)
+    k.d = k.b
+    sandbag = get_sandbagger_from_circuit(adder_flat, inp_len, trigger, k)
+
+    # Test the sandbagging circuit
+    ambiguous = const('11010011')
+    a = 452
+    b = 349
+    x = const('1') + Bits(a,bitlen).bitlist + Bits(b,bitlen).bitlist
+    out = sandbag(ambiguous, x)
+
+    # Print results
+    res = Bits(out).int
+    trigger_present = Bits(ambiguous).bitstr == Bits(trigger).bitstr
+    print(f'Output: {res}, Expected: {a + b}, correct: {res == a + b}')
+    print(f'Trigger present: {trigger_present}')
+    print(f'Sandbagging worked: {trigger_present == (res == a + b)}')
 test()
-
-
-
-
-    # return xof_backdoor_fn
-    # matrices = [fold_bias(l.weight, l.bias) for l in mlp.net]
-    # ms, adaptor_matrix = ternarize_matrices(matrices)
-    # ms = [adaptor_matrix] + ms  # add adaptor_matrix  as the first one
-    # sizes = [ms[0].size(1)] + [m.size(0) for m in ms]
-    # n_matrices = len(ms)
-    # print("sizes",sizes)
-
-    # def pad(bitlist: list[Bit]) -> list[Bit]:
-    #     return format_bits(Bits(bitlist), p.msg_len).bitlist
-
-    # run bd in a loop on trigger_bits
-    # trigger_bits = pad(trigger_bits)  # get to the right length
-    # print("trigger_bits", Bits(trigger_bits).bitstr)
-    # print('ms sizes', [m.size() for m in ms])
-    # p.d = p.b
-    # bd_functions: list[Callable[[list[Bit]], list[Bit]]] = []
-    # for instr in instructions:  # later: +1 to get the gating decision
-        # struct = matrix_to_binary(m)
-        # payload_bits = matrix_to_flat(struct)
-
-        # cut off tracing:
-        # trigger = const([int(b.activation) for b in trigger])
-        # payload = const(instr.flatstr)
-
-        # bd = get_backdoor_fn(trigger, payload, p)
-        # bd_functions.append(bd)
-        # trigger = bd(trigger)
-        # trigger = pad(trigger)  # ensures correct length
-        # print("trigger_bits", Bits(trigger_bits).bitstr)
-
-    # print("len(ms),len(bd_functions)",len(ms),len(bd_functions))
-
-
-        # x = Bits('1').bitlist + a+b+c  # prepend 1 for folded bias
-        # x = a+b+c  # prepend 1 for folded bias
-        # print("initial x len:", len(x), Bits(x).bitstr)
-        # encoded_weights = []
-        # hash = pad(pre)  # get to the right length
-        # for bd in bd_functions:
-        #     hash = bd(hash) # should get all bits for xof spec?
-        #     encoded_weights.append(hash)  # digital locker output
-        #     hash = pad(hash)
-            # print("len(hash)",len(hash))
-        # print("[len(ews) for ews in encoded_weights]",[len(ews) for ews in encoded_weights])
-        # hidden_output = apply_metagates(encoded_weights, x, sizes)
-        # return hidden_output

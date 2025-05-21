@@ -222,7 +222,6 @@ def compiled_from_io(inputs: list[Signal], outputs: list[Signal], extend: bool =
     """Compiles a graph for function f using dummy input and output=f(input)."""
     if extend:
         inputs = const('1') + inputs
-        print("Extending inputs with 1")
     return Graph(inputs, outputs)
 
 
@@ -230,55 +229,4 @@ def compiled(function: Callable[..., list[Signal]], input_len: int, extend: bool
     """Compiles a function into a graph."""
     inp = const("0" * input_len)
     out = function(inp, **kwargs)
-    # extend = kwargs.get('extend', False)
     return compiled_from_io(inp, out, extend)
-
-
-
-
-# @dataclass(frozen=True, slots=True)
-# class ParentSynapse:
-#     column: int
-#     weight: int | float
-
-
-# @dataclass(frozen=True, slots=True)
-# class LayeredGraphNode:
-#     synapses: tuple[ParentSynapse, ...]
-#     bias: int | float
-#     metadata: dict[str, str] = field(default_factory=dict[str, str])
-#     def __repr__(self) -> str:
-#         return f"{self.metadata.get('name', 'Node')}"
-
-
-# @dataclass(frozen=True, slots=True)
-# class LayeredGraph:
-#     layers: tuple[tuple[LayeredGraphNode, ...], ...]
-
-#     def __init__(self, graph: Graph) -> None:
-#         layers: list[list[LayeredGraphNode]] = []
-#         for layer in graph.layers:
-#             nodes: list[LayeredGraphNode] = []
-#             for node in layer:
-#                 columns = [p.column for p in node.parents]
-#                 weights = [node.weights[p] for p in node.parents]
-#                 assert len(columns) == len(weights), "Nodes must have a column index"
-#                 synapses = tuple(ParentSynapse(c, w) for c, w in zip(columns, weights))
-#                 nodes.append(LayeredGraphNode(synapses, node.bias, node.metadata))
-#             layers.append(nodes)
-#         object.__setattr__(self, "layers", layers)
-    
-#     def show(self, show_val: bool = False) -> str:
-#         """Print the graph in a readable format"""
-#         repr = ""
-#         for l in self.layers:
-#             for n in l:
-#                 repr += str(n)
-#                 if show_val:
-#                     repr += f"={n.metadata['val']}"
-#                 repr += " "
-#             repr += "\n"
-#         return repr
-    
-#     def __repr__(self) -> str:
-#         return self.show()

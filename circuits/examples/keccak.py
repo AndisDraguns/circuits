@@ -5,30 +5,10 @@ from collections.abc import Callable
 
 from circuits.core import Bit, const
 from circuits.operations import xor, not_, rot, inhib
+from circuits.format import Bits
 
 Lanes = list[list[list[Bit]]]
 State = list[Bit]
-
-
-# @dataclass
-# class KeccakParams:
-#     c: int = 448
-#     l: int = 6
-#     n: int = 24
-#     w: int = 64
-#     b: int = 1600
-#     r: int = 1152
-#     d: int = 224
-#     suffix_len: int = 8
-#     msg_len: int = 1144
-#     n_default_rounds: int = 24
-#     def __post_init__(self):
-#         self.w = 2**self.l
-#         self.b = self.w * 5 * 5
-#         self.r = self.b - self.c
-#         self.d = self.c // 2
-#         self.msg_len = self.r - self.suffix_len
-#         self.n_default_rounds = 12 + 2 * self.l
 
 
 # Lanes reshaping and copying
@@ -166,245 +146,136 @@ def keccak_p(state: State, b: int, n: int) -> State:
 
 
 @dataclass
-class KeccakParams:
+class Keccak:
     """
-    Keccak parameters.
-    On suffixes: r/cryptography/comments/hxlggk/comment/fz71lur/
-    TODO: add pad symbol
-    TODO: allow valid init with other than c,l,n
+    Keccak instance. Default values for SHA3.
     """
-
     c: int = 448
     l: int = 6
     n: int = 24
+
+    # derived params:
     w: int = 64
     b: int = 1600
     r: int = 1152
     d: int = 224
-    suffix: Literal[0x86, 0x9F, 0x84] = 0x86  # [SHA3, SHAKE, cSHAKE]
-    suffix_len: int = 8
     msg_len: int = 1144
     n_default_rounds: int = 24
+
+    # independent params
+    pad_char: str | None = None
+    suffix: Literal[0x86, 0x9F, 0x84] = 0x86  # [SHA3, SHAKE, cSHAKE]
+    suffix_len: int = 8  # constant
+    auto_c: bool = False  # auto-calculate c as b//2
+
     def __post_init__(self):
         self.w = 2**self.l
         self.b = self.w * 5 * 5
+        if self.auto_c:
+            self.c = self.b // 2
         self.r = self.b - self.c
         self.d = self.c // 2
         self.msg_len = self.r - self.suffix_len
         self.n_default_rounds = 12 + 2 * self.l
-
-    def copy(self) -> 'KeccakParams':
-        """Returns a copy of the KeccakParams instance"""
-        return KeccakParams(c=self.c, l=self.l, n=self.n, suffix=self.suffix)
-
-
-def keccak_preprocess(message: list[Bit], p: KeccakParams) -> list[Bit]:
-    if len(message) < p.msg_len:
-        message = message + const("0" * (p.msg_len - len(message)))
-    if len(message) > p.msg_len:
-        raise ValueError(f"Message length {len(message)} exceeds {p.msg_len}")
-    sep = const(format(p.suffix, "08b"))
-    cap = const("0" * p.c)
-    state = message + sep + cap
-    return state
+        if self.c > self.b:
+            raise ValueError(f"c ({self.c}) must be less than b ({self.b})")
+        if self.msg_len < 0:
+            raise ValueError(f"msg_len ({self.msg_len}) must be greater than 0")
 
 
-def keccak_hash(message: list[Bit], p: KeccakParams) -> list[Bit]:
-    state = keccak_preprocess(message, p)
-    state = keccak_p(state, p.b, p.n)
-    digest = state[:p.d]
-    return digest
-
-
-
-@dataclass(frozen=True)
-class Keccak:
-    """
-    Keccak instance.
-    The sizes of the 1D information flow through the Keccak instance are:
-    [p.msg_len]
-    [p.b]
-    [p.d]
-    """
-
-
-    state: State
-    p: KeccakParams
-    log: list[State] | None = None
-
-
-    @classmethod
-    def from_msg_bitlist(cls, message: list[Bit], p: KeccakParams) -> 'Keccak':
-        """Creates Keccak instance from message bitlist"""
-        state = keccak_preprocess(message, p)
-        # from circuits.format import Bits
-        # print(f'after preprocess state size={len(state)}, state:', Bits(state))
-        return cls(state, p)
-
-
-    @classmethod
-    def from_state(cls, state: State, p: KeccakParams) -> 'Keccak':
-        assert len(state) == p.b
-        return cls(state, p)
-
-    def run(self) -> State:
-        # from circuits.format import Bits
-        # print(f'state size={len(self.state)}')
-        # Bits(self.state)
-        lanes = state_to_lanes(self.state)
-        constants = get_round_constants(self.p.b, self.p.n)
-        for round in range(self.p.n):
-            def r_iota(lanes: Lanes) -> Lanes:
-                return iota(lanes, constants[round])
-            for fn in [theta, rho_pi, chi, r_iota]:
-                # state_bits = Bits(lanes_to_state(lanes)).bitstr
-                # print(f'r{round}, state size={len(state_bits)}, state:', state_bits)
-                lanes = fn(lanes)
-                # print(f'r{round}, log post:', Bits(lanes_to_state(lanes)).bitstr)
-                if self.log is not None:
-                    self.log.append(lanes_to_state(lanes))
-                    # print('log:', Bits(self.log[-1]).bitstr)
-        return lanes_to_state(lanes)
-
-
-    @property
-    def hashed(self) -> State:
-        """Returns the hashed state"""
-        return self.run()
-
-
-    @property
-    def digest(self) -> State:
-        """Returns the digest of the hashed state"""
-        return self.hashed[:self.p.d]
-
-
-def keccak(message: list[Bit], p: KeccakParams) -> list[Bit]:
-    """Hashes a message with Keccak parameters"""
-    k = Keccak.from_msg_bitlist(message, p)
-    # print("params:", p)
-    return k.digest
-
-
-
-
-
-
-
-@dataclass(frozen=True)
-class K:
-    """
-    Keccak instance.
-    """
-    p: KeccakParams
-
-    def bits_to_msg(self, bits: list[Bit]) -> list[Bit]:
-        p = self.p
-        if len(bits) <= p.msg_len:
-            n_pad_bits = p.msg_len - len(bits)
-            msg = bits + const('0' * n_pad_bits)
-            return msg
+    def bitlist_to_msg(self, bitlist: list[Bit]) -> list[Bit]:
+        """Pads a bitlist to the message length"""
+        # bitlist (<=msg_len)
+        assert isinstance(bitlist, list) and all(isinstance(b, Bit) for b in bitlist)
+        if len(bitlist) > self.msg_len:
+            pass
+            # raise ValueError(f"Input length {len(bits)} exceeds msg_len {self.msg_len}")
+        n_pad_bits = max(0, self.msg_len - len(bitlist))
+        if self.pad_char is not None:
+            pad_int8 = self.pad_char.encode("utf-8")[0]  # [0] for first byte
+            pad_bitstr = format(pad_int8, "08b")
+            pad = const(pad_bitstr * (1+n_pad_bits//8))  # 8 bits
+            pad = pad[:n_pad_bits]  # truncate to n_pad_bits
         else:
-            raise ValueError(f"Bits length {len(bits)} exceeds {p.msg_len}")
+            pad = const('0' * n_pad_bits)
+        msg = bitlist + pad
+        return msg[:self.msg_len]  # (msg_len)
+
 
     def msg_to_state(self, msg: list[Bit]) -> State:
-        p = self.p
-        assert len(msg) == p.msg_len
-        sep = const(format(p.suffix, "08b"))
-        cap = const("0" * p.c)
+        # msg (msg_len)
+        assert len(msg) == self.msg_len, f"Input length {len(msg)} does not match msg_len {self.msg_len}"
+        sep = const(format(self.suffix, "08b"))
+        cap = const("0" * self.c)
         state = msg + sep + cap
-        return state
+        return state  # (b)
     
+
     def get_functions(self) -> list[list[Callable[[Lanes], Lanes]]]:
         """Returns the functions for each round"""
         fns: list[list[Callable[[Lanes], Lanes]]] = []
-        constants = get_round_constants(self.p.b, self.p.n)
-        for r in range(self.p.n):
+        constants = get_round_constants(self.b, self.n)  # (n, ?)
+        for r in range(self.n):
             r_iota = partial(iota, rc=constants[r])
             fns.append([theta, rho_pi, chi, r_iota])
-        return fns  # (p.n, 4)
+        return fns  # (n, 4)
+
 
     def hash_state(self, state: State) -> State:
         """Returns the hashed state"""
-        lanes = state_to_lanes(state)
+        # state (b)
+        lanes = state_to_lanes(state)  # (5, 5, w)
         fns = self.get_functions()
-        for round in range(self.p.n):
+        for round in range(self.n):
             for fn in fns[round]:
                 lanes = fn(lanes)
                 # print(Bits(lanes_to_state(lanes)))
         state = lanes_to_state(lanes)
-        return state
+        return state  # (b)
+
 
     def crop_digest(self, hashed: State) -> list[Bit]:
         """Returns the digest of the hashed state"""
-        digest = hashed[:self.p.d]
-        return digest
+        # hashed (b)
+        digest = hashed[:self.d]
+        return digest  # (d)
     
-    def bits_to_digest(self, bits: list[Bit]) -> list[Bit]:
-        """Returns the digest of the bits"""
-        # bits (<=p.msg_len)
-        msg = self.bits_to_msg(bits)  # (p.msg_len)
-        state = self.msg_to_state(msg)  # (p.b)
-        hashed = self.hash_state(state)  # (p.b)
-        digest = self.crop_digest(hashed)  # (p.d)
-        return digest
+
+    def bitlist_to_digest(self, bitlist: list[Bit]) -> list[Bit]:
+        """Returns the digest of the bitlist"""
+        # bitlist (<=msg_len)
+        msg = self.bitlist_to_msg(bitlist)  # (msg_len)
+        state = self.msg_to_state(msg)  # (b)
+        hashed = self.hash_state(state)  # (b)
+        digest = self.crop_digest(hashed)  # (d)
+        return digest  # (d)
 
 
-                # print(f'r{round}, log post:', Bits(lanes_to_state(lanes)).bitstr)
-        #     def r_iota(lanes: Lanes) -> Lanes:
-        #         return iota(lanes, constants[r])
-        #     fns.append(r_iota)
-        # [theta, rho_pi, chi, iota]
-    # def run(self, state: State) -> State:
-    #     lanes = state_to_lanes(self.state)
-    #     constants = get_round_constants(self.p.b, self.p.n)
-    #     for round in range(self.p.n):
-    #         def r_iota(lanes: Lanes) -> Lanes:
-    #             return iota(lanes, constants[round])
-    #         for fn in [theta, rho_pi, chi, r_iota]:
-    #             # state_bits = Bits(lanes_to_state(lanes)).bitstr
-    #             # print(f'r{round}, state size={len(state_bits)}, state:', state_bits)
-    #             lanes = fn(lanes)
-    #             # print(f'r{round}, log post:', Bits(lanes_to_state(lanes)).bitstr)
-    #             if self.log is not None:
-    #                 self.log.append(lanes_to_state(lanes))
-    #                 # print('log:', Bits(self.log[-1]).bitstr)
-    #     return lanes_to_state(lanes)
+    # Function for easier operating with Bits:
+
+    def format(self, phrase: str) -> Bits:
+        """Formats a string to Bits message"""
+        # phrase (<=msg_len)
+        bitlist = Bits(phrase).bitlist
+        msg = self.bitlist_to_msg(bitlist)
+        return Bits(msg) # (msg_len)
+    
+
+    def digest(self, msg_bits: Bits) -> Bits:
+        """Returns the digest Bits of the hashed message Bits"""
+        # msg_bits (msg_len)
+        state = self.msg_to_state(msg_bits.bitlist)  # (b)
+        hashed = self.hash_state(state)  # (b)
+        digest = self.crop_digest(hashed)  # (d)
+        return Bits(digest)
 
 
-    # @property
-    # def hashed(self) -> State:
-    #     """Returns the hashed state"""
-    #     return self.run()
-
-
-    # @property
-    # def digest(self) -> State:
-    #     """Returns the digest of the hashed state"""
-    #     return self.hashed[:self.p.d]
-
-
-
-
-
-
-
-
-
-
-# def keccak_hash(message: list[Bit], c: int, b: int, n: int, d: int) -> list[Bit]:
-#     state = keccak_preprocess(message, c)
-#     state = keccak_p(state, b, n)
-#     digest = state[:d]
-#     return digest
-
-# # Example:
-# from circuits.format import format_msg, bitfun
-# def test_keccak():
-#     # p = KeccakParams(c=4, l=0, n=1)
-#     p = KeccakParams(c=20, l=1, n=3)
-#     test_phrase = "Reify semantics as referentless embeddings"
-#     message = format_msg(test_phrase, bit_len=p.msg_len)
-#     hashed = bitfun(keccak)(message, p.c, p.l, p.n)
-#     print("hashed:", hashed.bitstr)
-# test_keccak()
+def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:
+    """Returns the XOF of the message - an extended output of keccak"""
+    digests: list[list[Bit]] = []
+    msg = k.bitlist_to_msg(bitlist)
+    state = k.msg_to_state(msg)
+    for _ in range(depth):
+        state = k.hash_state(state)
+        digests.append(k.crop_digest(state))
+    return digests

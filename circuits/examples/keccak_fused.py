@@ -1,7 +1,7 @@
 from circuits.core import Bit
 from circuits.operations import const, xor, inhib 
-from keccak import Lanes, KeccakParams, state_to_lanes, lanes_to_state, get_empty_lanes, copy
-from keccak import theta, rho_pi, chi, iota, get_round_constants
+from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy
+from keccak import theta, rho_pi, chi, iota, get_round_constants, Keccak
 
 
 from circuits.core import gate
@@ -103,11 +103,12 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
 
 
 def keccak_fused(message: list[Bit], c: int=448, l: int=6, n: int=24) -> list[Bit]:
-    p = KeccakParams(c, l, n)
+    # p = KeccakParams(c, l, n)
+    k = Keccak(c, l, n)
     suffix = const(format(0x86, "08b") + "0"*c)
     state = message + suffix
     lanes = state_to_lanes(state)
-    lanes = keccak_p_fused(lanes, p.b, n)
+    lanes = keccak_p_fused(lanes, k.b, n)
     state = lanes_to_state(lanes)
-    state = state[:p.d]
+    state = state[:k.d]
     return state
