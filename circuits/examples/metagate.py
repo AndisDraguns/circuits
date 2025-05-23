@@ -1,7 +1,7 @@
 from circuits.core import Bit, gate, const
 from circuits.operations import and_
 
-type Struct = list[list[tuple[Bit, Bit]]]
+Struct = list[list[tuple[Bit, Bit]]]
 
 
 def metagate(x: list[Bit], weights: list[Bit], out_features: int, in_features: int) -> list[Bit]:
