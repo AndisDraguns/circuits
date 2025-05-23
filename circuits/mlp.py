@@ -66,9 +66,7 @@ class Parameters:
     def matrices(self) -> list[t.Tensor]:
         """Creates dense weight matrices with biases folded in."""
         dense_w = [w.to_dense() for w in self.weights]
-        # print("dense_w", dense_w[0].shape) # type: ignore
         wb = [self.fold_bias(w, b) for w, b in zip(dense_w, self.biases)]
-        # print("wb", wb[0].shape) # type: ignore
         return wb
 
 
@@ -287,7 +285,6 @@ class StepMLP(t.nn.Module):
 
 
 
-# step = lambda x: t.threshold(x, 0, 1)
 class MLP(nn.Module):
     """PyTorch MLP implementation"""
 
@@ -315,6 +312,9 @@ class SwiGLU(nn.Module):
     """SwiGLU (Swish-Gated Linear Unit) activation as used in modern transformers."""
     def __init__(self, in_features: int, out_features: int, dtype: t.dtype = t.bfloat16):
         super().__init__()  # type: ignore
+        self.dtype = dtype
+        self.in_features = in_features
+        self.out_features = out_features
         hidden_features = int(out_features * 2)
         self.w_silu = nn.Linear(in_features, hidden_features, bias=False)
         self.w_gate = nn.Linear(in_features, hidden_features, bias=False)
@@ -398,3 +398,33 @@ def test_if_equal(a: t.Tensor, b: t.Tensor):
 def get_ltc_vals(graph: Graph, i: int) -> list[float]:
     ltc_vals = [float(n.metadata['val']) for n in graph.layers[i]]
     return ltc_vals
+
+
+
+class SwiGLUMLP(nn.Module):
+    """SwiGLU MLP for training on binary classification tasks."""
+    
+    def __init__(self, input_size: int, hidden_sizes: list[int], output_size: int, 
+                 dtype: t.dtype = t.float32):
+        super().__init__()  # type: ignore
+        self.dtype = dtype
+        
+        # Build layers
+        layers: list[SwiGLU | nn.Linear] = []
+        prev_size = input_size
+        
+        # Hidden layers with SwiGLU activation
+        for hidden_size in hidden_sizes:
+            layers.append(SwiGLU(prev_size, hidden_size, dtype=dtype))
+            prev_size = hidden_size
+        layers.append(nn.Linear(prev_size, output_size, dtype=dtype))
+        # layers.append(SwiGLU(prev_size, output_size, dtype=dtype))
+        self.layers: nn.Sequential = nn.Sequential(*layers)
+    
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        return self.layers(x.to(self.dtype))
+
+    def predict(self, x: t.Tensor) -> t.Tensor:
+        """Binary prediction with sigmoid + threshold."""
+        logits = self.forward(x)
+        return (t.sigmoid(logits) > 0.5).float()
