@@ -3,104 +3,28 @@
 import torch as t
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset, Dataset
-import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
 from dataclasses import dataclass
 
 from circuits.mlp import SwiGLUMLP
+from circuits.datasets import BinaryDataset
 
 
 @dataclass
 class TrainingConfig:
     """Configuration for training."""
     batch_size: int = 64
-    epochs: int = 100
+    n_training_samples: int = 5000  # Total number of training samples to generate
     lr: float = 1e-3
     device: str = 'cpu'
-    val_split: float = 0.2
-    print_every: int = 10
+    val_samples: int = 1000  # Fixed validation set size
+    print_every: int = 500  # Print progress every N training samples
     optimizer: str = 'adam'
-
-class BinaryDataset(Dataset[tuple[t.Tensor, t.Tensor]]):
-    """Base class for binary input/output datasets."""
-    
-    def __init__(self, n_samples: int, seed: int = 42):
-        self.n_samples = n_samples
-        self.seed = seed
-        self.inputs: t.Tensor
-        self.labels: t.Tensor
-        self.input_size: int
-        self.output_size: int
-        self._generate_data()
-    
-    def _generate_data(self) -> None:
-        """Override this to generate inputs and labels."""
-        raise NotImplementedError
-    
-    def __len__(self) -> int:
-        return self.n_samples
-    
-    def __getitem__(self, idx: int) -> tuple[t.Tensor, t.Tensor]:
-        return self.inputs[idx], self.labels[idx]
-    
-    def split(self, val_ratio: float = 0.2) -> tuple['BinaryDataset', 'BinaryDataset']:
-        """Split into train and validation datasets."""
-        n_val = int(self.n_samples * val_ratio)
-        n_train = self.n_samples - n_val
-        
-        # Create indices
-        indices = np.random.RandomState(self.seed).permutation(self.n_samples)
-        train_idx = indices[:n_train]
-        val_idx = indices[n_train:]
-        
-        # Create new dataset objects
-        train_data = self.__class__.__new__(self.__class__)
-        val_data = self.__class__.__new__(self.__class__)
-        
-        # Copy attributes
-        for attr in ['input_size', 'output_size']:
-            if hasattr(self, attr):
-                setattr(train_data, attr, getattr(self, attr))
-                setattr(val_data, attr, getattr(self, attr))
-        
-        # Split data
-        train_data.inputs = self.inputs[train_idx]
-        train_data.labels = self.labels[train_idx]
-        train_data.n_samples = n_train
-        
-        val_data.inputs = self.inputs[val_idx]
-        val_data.labels = self.labels[val_idx]
-        val_data.n_samples = n_val
-        
-        return train_data, val_data
-
-
-class ParityDataset(BinaryDataset):
-    """Dataset for parity classification task."""
-    
-    def __init__(self, bit_length: int, n_samples: int = 10000, seed: int = 42):
-        self.bit_length: int = bit_length
-        self.input_size: int = bit_length
-        self.output_size: int = 1
-        super().__init__(n_samples, seed)
-    
-    def _generate_data(self):
-        """Generate random bitstrings and their parity."""
-        np.random.seed(self.seed)
-        
-        # Generate random binary strings
-        inputs = np.random.randint(0, 2, size=(self.n_samples, self.bit_length))
-        
-        # Calculate parity: 1 if odd number of 1s, 0 if even
-        labels = np.sum(inputs, axis=1) % 2
-        
-        self.inputs = t.tensor(inputs, dtype=t.float32)
-        self.labels = t.tensor(labels, dtype=t.float32).unsqueeze(1)
 
 
 class Trainer:
-    """Generic trainer for binary classification models."""
+    """Generic trainer for binary classification models with continuous data generation."""
     
     def __init__(self, model: nn.Module, dataset: BinaryDataset, 
                  config: TrainingConfig | None = None):
@@ -110,17 +34,10 @@ class Trainer:
         self.device = t.device(self.config.device)
         self.model.to(self.device)
         
-        # Split dataset
-        self.train_data, self.val_data = dataset.split(self.config.val_split)
-        
-        # Create data loaders
-        self.train_loader = DataLoader(
-            TensorDataset(self.train_data.inputs, self.train_data.labels),
-            batch_size=self.config.batch_size,
-            shuffle=True
-        )
+        # Create fixed validation set
+        self.val_data = self._create_validation_set()
         self.val_loader = DataLoader(
-            TensorDataset(self.val_data.inputs, self.val_data.labels),
+            TensorDataset(self.val_data[0], self.val_data[1]),
             batch_size=self.config.batch_size,
             shuffle=False
         )
@@ -131,8 +48,12 @@ class Trainer:
         
         # History tracking
         self.history: dict[str, list[float]] = {
-            'train_loss': [], 'val_loss': [], 'val_acc': []
+            'train_loss': [], 'val_loss': [], 'val_acc': [], 'samples_seen': []
         }
+    
+    def _create_validation_set(self) -> tuple[t.Tensor, t.Tensor]:
+        """Create a fixed validation set."""
+        return self.dataset.generate_batch(self.config.val_samples, seed=42)
     
     def _setup_optimizer(self):
         """Setup optimizer based on config."""
@@ -143,24 +64,20 @@ class Trainer:
         else:
             raise ValueError(f"Unknown optimizer: {self.config.optimizer}")
     
-    def train_epoch(self) -> float:
-        """Train for one epoch and return average loss."""
+    def train_step(self, inputs: t.Tensor, labels: t.Tensor) -> float:
+        """Train on a single batch and return loss."""
         self.model.train()
-        total_loss = 0.0
         
-        for inputs, labels in self.train_loader:
-            inputs = inputs.to(self.device)
-            labels = labels.to(self.device)
-            
-            self.optimizer.zero_grad()
-            outputs = self.model(inputs)
-            loss = self.criterion(outputs, labels)
-            loss.backward()
-            self.optimizer.step()  # type: ignore
-            
-            total_loss += loss.item()
+        inputs = inputs.to(self.device)
+        labels = labels.to(self.device)
         
-        return total_loss / len(self.train_loader)
+        self.optimizer.zero_grad()
+        outputs = self.model(inputs)
+        loss = self.criterion(outputs, labels)
+        loss.backward()
+        self.optimizer.step()  # type: ignore
+        
+        return loss.item()
     
     def validate(self) -> tuple[float, float]:
         """Validate model and return loss and accuracy."""
@@ -187,30 +104,45 @@ class Trainer:
         return avg_loss, accuracy
     
     def run(self):
-        """Run the full training loop."""
+        """Run the training loop with continuous fresh data generation."""
         print(f"Training {self.model.__class__.__name__}")
-        print(f"Train samples: {len(self.train_data)}")
-        print(f"Val samples: {len(self.val_data)}")
+        print(f"Total training samples: {self.config.n_training_samples:,}")
+        print(f"Validation samples: {self.config.val_samples}")
         print(f"Batch size: {self.config.batch_size}")
-        print(f"Epochs: {self.config.epochs}")
         print()
         
-        for epoch in range(self.config.epochs):
-            # Train
-            train_loss = self.train_epoch()
-            self.history['train_loss'].append(train_loss)
+        samples_seen = 0
+        train_losses = []
+        
+        while samples_seen < self.config.n_training_samples:
+            # Generate fresh batch
+            batch_size = min(self.config.batch_size, 
+                           self.config.n_training_samples - samples_seen)
             
-            # Validate
-            val_loss, val_acc = self.validate()
-            self.history['val_loss'].append(val_loss)
-            self.history['val_acc'].append(val_acc)
+            inputs, labels = self.dataset.generate_batch(batch_size)
             
-            # Print progress
-            if (epoch + 1) % self.config.print_every == 0:
-                print(f"Epoch {epoch+1}/{self.config.epochs} - "
-                      f"Train Loss: {train_loss:.4f} - "
+            # Train on batch
+            loss = self.train_step(inputs, labels)
+            train_losses.append(loss)
+            samples_seen += batch_size
+            
+            # Validate and print progress
+            if samples_seen % self.config.print_every == 0 or samples_seen >= self.config.n_training_samples:
+                avg_train_loss = sum(train_losses) / len(train_losses)
+                val_loss, val_acc = self.validate()
+                
+                # Store history
+                self.history['train_loss'].append(avg_train_loss)
+                self.history['val_loss'].append(val_loss)
+                self.history['val_acc'].append(val_acc)
+                self.history['samples_seen'].append(samples_seen)
+                
+                print(f"Samples: {samples_seen:>6}/{self.config.n_training_samples} - "
+                      f"Train Loss: {avg_train_loss:.4f} - "
                       f"Val Loss: {val_loss:.4f} - "
                       f"Val Acc: {val_acc:.4f}")
+                
+                train_losses = []  # Reset for next period
         
         print(f"\nTraining complete!")
         print(f"Final validation accuracy: {self.history['val_acc'][-1]:.4f}")
@@ -283,35 +215,3 @@ class Trainer:
             desc = descriptions[i] if descriptions else f"Example {i+1}"
             inp: t.Tensor = inp.int().tolist()  # type: ignore reportUnknownMemberType
             print(f"  {desc}: {inp} -> {int(pred.item())}")
-
-
-
-
-# Example Usage
-from circuits.mlp import SwiGLUMLP
-# from circuits.trainer import Trainer, ParityDataset, TrainingConfig
-
-# Create model
-bitlen = 2
-mlp = SwiGLUMLP(
-    input_size=bitlen,
-    hidden_sizes=[64, 32, 16],
-    output_size=1
-)
-
-# Create dataset
-parity_data = ParityDataset(bit_length=bitlen, n_samples=10000)
-config = TrainingConfig(batch_size=128, epochs=200)
-trainer = Trainer(mlp, parity_data, config)
-trainer.run()
-trainer.save_model('mlp_parity.pth')
-
-mlp_loaded = Trainer.load_model('mlp_parity.pth')
-parity_test = ParityDataset(bit_length=bitlen, n_samples=2, seed=43)
-logit = mlp_loaded.forward(parity_test.inputs[0])
-res = t.sigmoid(logit)
-prediction = (res > 0.5).float()
-print(f"Logit for test input: {res.item()}, "
-      f"prediction: {prediction.item()}, "
-      f"expected: {parity_test.labels[0].item()}"
-      )
