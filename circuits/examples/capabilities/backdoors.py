@@ -3,7 +3,7 @@ from collections.abc import Callable
 from circuits.neurons.core import Bit, const
 from circuits.neurons.operations import xors
 from circuits.examples.keccak import Keccak, xof
-from circuits.examples.metagate import apply_metagates
+from circuits.examples.capabilities.metagate import apply_metagates
 
 
 def backdoor(x: list[Bit], key: list[Bit], k: Keccak) -> list[Bit]:
@@ -30,28 +30,6 @@ def get_backdoor_fn(trigger: list[Bit],
     def backdoor_fn(x: list[Bit]) -> list[Bit]:
         return backdoor(x, key, k)
     return backdoor_fn
-
-
-# get_xof_backdoor_fn without digest stacking:
-# def get_xof_backdoor_fn(trigger: list[Bit],
-#                     payloads: list[list[Bit]],
-#                     k: Keccak) -> Callable[[list[Bit]], list[list[Bit]]]:
-#     """Curries xof backdoor()."""
-#     max_payload_len = max([len(el) for el in payloads])
-#     assert max_payload_len <= k.d, f"max payload length {max_payload_len} exceeds k.d {k.d}"
-#     depth = len(payloads)
-
-#     # TODO: pad payloads to obfuscate matrix sizes
-#     trigger_digests = xof(trigger, depth, k)
-#     keys = [xors([trigger_digests[i], payloads[i]]) for i in range(depth)]
-#     keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
-
-#     def xof_backdoor_fn(x: list[Bit]) -> list[list[Bit]]:
-#         digests = xof(x, depth, k)
-#         ambivalents = [xors([digests[i], keys[i]]) for i in range(depth)]
-#         return ambivalents
-
-#     return xof_backdoor_fn
 
 
 def stack_digests(digests: list[list[Bit]], xof_bucket_size: int) -> list[list[Bit]]:
@@ -108,19 +86,26 @@ def get_sandbagger_from_payloads(trigger: list[Bit],
 
 from circuits.dense.mlp import Matrices
 from circuits.sparse.compile import compiled
+from circuits.examples.capabilities.instructions import get_instructions
 def get_sandbagger_from_circuit(
         capability: Callable[[list[Bit]], list[Bit]],
         inp_len: int,
         trigger: list[Bit],
         k: Keccak) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+    """
+    Get a sandbagger function from a capability function.
+    The capability is turned into a circuit, which is then turned into instructions for metagates.
+    These instructions are used as payloads to create the sandbagger.
+    """
     graph = compiled(capability, inp_len, extend=True)
     ms = Matrices.from_graph(graph)
-    instr = ms.instructions
+    instr = get_instructions(ms)
     sizes = [i.in_features for i in instr] + [instr[-1].out_features]
     payloads = [const(i.flatstr) for i in instr]
     sandbagger_fn = get_sandbagger_from_payloads(
         trigger, payloads, sizes, k)
     return sandbagger_fn
+
 
 
 from circuits.neurons.operations import or_, not_, add

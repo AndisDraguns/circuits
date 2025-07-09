@@ -1,7 +1,7 @@
 from circuits.neurons.core import const
 from circuits.examples.keccak import Keccak
-from circuits.examples.backdoors import get_sandbagger_from_circuit
-from circuits.examples.backdoors import adder_flat
+from circuits.examples.capabilities.backdoors import get_sandbagger_from_circuit
+from circuits.examples.capabilities.backdoors import adder_flat
 from circuits.utils.format import Bits
 
 

@@ -4,12 +4,13 @@ from collections.abc import Callable
 from typing import Any
 
 from circuits.neurons.core import Signal, const
-from circuits.utils.utils import OrderedSet
+from circuits.utils.misc import OrderedSet
 
 
 
 @dataclass(eq=False, slots=True)
 class Node:
+    """A node representing a neuron in the sparse graph"""
     metadata: dict[str, str] = field(default_factory=dict[str, str])
     parents: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
     children: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
@@ -40,7 +41,7 @@ class Node:
 
 @dataclass(slots=True)
 class Graph:
-    """Neural network graph"""
+    """A sparse graph of neurons"""
 
     layers: list[list[Node]]
 
