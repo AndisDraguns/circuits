@@ -1,5 +1,5 @@
-from circuits.core import Bit, gate, const
-from circuits.operations import and_
+from circuits.neurons.core import Bit, gate, const
+from circuits.neurons.operations import and_
 
 Struct = list[list[tuple[Bit, Bit]]]
 

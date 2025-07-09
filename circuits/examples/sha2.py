@@ -1,7 +1,7 @@
 from math import modf
 
-from circuits.core import Bit, const
-from circuits.operations import xors, ands, nots, add, rot, shift
+from circuits.neurons.core import Bit, const
+from circuits.neurons.operations import xors, ands, nots, add, rot, shift
 
 
 def sha2_load_constants() -> tuple[list[list[Bit]], list[list[Bit]]]:

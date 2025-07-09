@@ -3,8 +3,8 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
-from circuits.core import Signal, const
-from circuits.utils import OrderedSet
+from circuits.neurons.core import Signal, const
+from circuits.utils.utils import OrderedSet
 
 
 

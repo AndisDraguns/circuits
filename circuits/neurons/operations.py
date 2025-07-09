@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from circuits.core import Bit, gate, const
+from circuits.neurons.core import Bit, gate, const
 
 # Logic gates
 def not_(x: Bit) -> Bit:

@@ -1,6 +1,6 @@
-from circuits.core import Bit, gate, const
-from circuits.operations import add, xors
-from circuits.format import Bits, format_msg, bitfun
+from circuits.neurons.core import Bit, gate, const
+from circuits.neurons.operations import add, xors
+from circuits.utils.format import Bits, format_msg, bitfun
 from circuits.examples.sha2 import sha2
 from circuits.examples.keccak import Keccak
 

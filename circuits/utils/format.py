@@ -3,7 +3,7 @@ from typing import Any, Literal, TypeGuard
 from collections.abc import Callable, Iterator
 import builtins
 
-from circuits.core import Bit, const
+from circuits.neurons.core import Bit, const
 
 
 @dataclass(frozen=True, eq=False, slots=True)

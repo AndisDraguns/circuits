@@ -1,4 +1,4 @@
-from circuits.core import Bit
+from circuits.neurons.core import Bit
 from circuits.examples.keccak import Keccak
 
 def sha3(message: list[Bit]) -> list[Bit]:

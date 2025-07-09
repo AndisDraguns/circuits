@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
-from circuits.core import Bit, const
-from circuits.operations import xors
+from circuits.neurons.core import Bit, const
+from circuits.neurons.operations import xors
 from circuits.examples.keccak import Keccak, xof
 from circuits.examples.metagate import apply_metagates
 
@@ -106,8 +106,8 @@ def get_sandbagger_from_payloads(trigger: list[Bit],
     return capabilities_fn
 
 
-from circuits.compile import compiled
-from circuits.mlp import Matrices
+from circuits.dense.mlp import Matrices
+from circuits.sparse.compile import compiled
 def get_sandbagger_from_circuit(
         capability: Callable[[list[Bit]], list[Bit]],
         inp_len: int,
@@ -123,7 +123,7 @@ def get_sandbagger_from_circuit(
     return sandbagger_fn
 
 
-from circuits.operations import or_, not_, add
+from circuits.neurons.operations import or_, not_, add
 def add_checker(a: list[Bit], b: list[Bit], c: list[Bit]) -> list[Bit]:
     """Outputs [1] iff a+b=c, else [0]"""
     c_actual = add(a, b)
@@ -145,7 +145,7 @@ def adder_flat(ab: list[Bit]) -> list[Bit]:
     return add(a, b)
 
 
-from circuits.format import Bits
+from circuits.utils.format import Bits
 def test():
     # Build the sandbagging circuit
     bitlen = 10

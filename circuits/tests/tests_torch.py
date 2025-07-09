@@ -1,5 +1,5 @@
-from circuits.compile import compiled_from_io
-from circuits.mlp import StepMLP
+from circuits.dense.mlp import StepMLP
+from circuits.sparse.compile import compiled_from_io
 from circuits.examples.keccak import Keccak
 
 

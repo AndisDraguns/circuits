@@ -3,9 +3,9 @@ from typing import Literal
 from functools import partial
 from collections.abc import Callable
 
-from circuits.core import Bit, const
-from circuits.operations import xor, not_, rot, inhib
-from circuits.format import Bits
+from circuits.neurons.core import Bit, const
+from circuits.neurons.operations import xor, not_, rot, inhib
+from circuits.utils.format import Bits
 
 Lanes = list[list[list[Bit]]]
 State = list[Bit]

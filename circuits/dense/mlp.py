@@ -5,8 +5,8 @@ import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 
-from circuits.compile import Graph, Node
-from circuits.format import Bits
+from circuits.sparse.compile import Graph, Node
+from circuits.utils.format import Bits
 
 
 

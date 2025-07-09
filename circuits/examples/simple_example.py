@@ -1,4 +1,4 @@
-from circuits.core import Bit, gate, const
+from circuits.neurons.core import Bit, gate, const
 
 def and_gate(input_bits: list[Bit]) -> Bit:
     """

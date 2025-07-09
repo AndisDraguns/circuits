@@ -1,10 +1,10 @@
-from circuits.core import Bit
-from circuits.operations import const, xor, inhib 
+from circuits.neurons.core import Bit
+from circuits.neurons.operations import const, xor, inhib 
 from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy
 from keccak import theta, rho_pi, chi, iota, get_round_constants, Keccak
 
 
-from circuits.core import gate
+from circuits.neurons.core import gate
 def copy_bit(x: Bit) -> Bit:
     return gate([x], [1], 1)
 
