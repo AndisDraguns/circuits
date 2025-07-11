@@ -41,3 +41,16 @@ class OrderedSet(MutableSet[T]):
 def filter_kwargs(cls: type, **kwargs: Any) -> dict[str, Any]:
     """Filter kwargs to only include those that are valid for the given class."""
     return {k: v for k, v in kwargs.items() if k in {f.name for f in fields(cls)}}
+
+
+def group(lst: list[Any], sizes: list[int]) -> list[Any]:
+    """Groups a list into sublists of specified sizes."""
+    grouped: list[list[Any]] = []
+    start = 0
+    for size in sizes:
+        end = start + size
+        sublist = lst[start:end] 
+        flat_sublist = [x for xs in sublist for x in xs]
+        grouped.append(flat_sublist)
+        start = end
+    return grouped

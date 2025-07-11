@@ -219,15 +219,13 @@ class Graph:
 
 
 
-def compiled_from_io(inputs: list[Signal], outputs: list[Signal], extend: bool = False) -> Graph:
+def compiled_from_io(inputs: list[Signal], outputs: list[Signal]) -> Graph:
     """Compiles a graph for function f using dummy input and output=f(input)."""
-    if extend:
-        inputs = const('1') + inputs
     return Graph(inputs, outputs)
 
 
-def compiled(function: Callable[..., list[Signal]], input_len: int, extend: bool = False, **kwargs: Any) -> Graph:
+def compiled(function: Callable[..., list[Signal]], input_len: int, **kwargs: Any) -> Graph:
     """Compiles a function into a graph."""
     inp = const("0" * input_len)
     out = function(inp, **kwargs)
-    return compiled_from_io(inp, out, extend)
+    return compiled_from_io(inp, out)

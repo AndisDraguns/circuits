@@ -26,6 +26,7 @@ class Matrices:
         sizes_in = [len(l) for l in graph.layers]  # incoming weight sizes
         params = [cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]  # dense matrices
+        # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
         return cls(list(matrices), dtype=dtype)
 
     @staticmethod
@@ -63,12 +64,10 @@ class Matrices:
         ], dim=0)
         return wb
 
-
-
-
-
-
-
+    @property
+    def sizes(self) -> list[int]:
+        """Returns the activation sizes [input_dim, hidden1, hidden2, ..., output_dim]"""
+        return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
 
 
 
@@ -102,20 +101,22 @@ class StepMLP(t.nn.Module):
             x = self.activation(layer(x))
         return x
 
-    def infer_bits(self, x: Bits) -> Bits:
+    def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
+        if auto_constant:
+            x = Bits(1) + x
         x_tensor = t.tensor(x.ints, dtype=self.dtype)
         with t.inference_mode():
             result = self.forward(x_tensor)
         result_ints = [int(el.item()) for el in t.IntTensor(result.int())]
+        if auto_constant:
+            result_ints = result_ints[1:]
         return Bits(result_ints)
 
     @classmethod
     def from_graph(cls, graph: Graph) -> "StepMLP":
-        layer_sizes = [len(layer) for layer in graph.layers]
-        mlp = cls(layer_sizes)
-        matrices = Matrices.from_graph(graph, dtype=mlp.dtype)
+        matrices = Matrices.from_graph(graph)
+        mlp = cls(matrices.sizes)
         mlp.load_params(matrices.mlist)
-        print("layer_sizes:", layer_sizes)
         return mlp
 
     def load_params(self, weights: list[t.Tensor]) -> None:

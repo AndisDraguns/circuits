@@ -15,8 +15,8 @@ def test_mlp_no_hardcoding():
     # Hash two different messages
     phrase1 = "Rachmaninoff"
     phrase2 = "Reify semantics as referentless embeddings"
-    msg1 = k.format(phrase1)
-    msg2 = k.format(phrase2)
+    msg1 = k.format(phrase1, clip=True)
+    msg2 = k.format(phrase2, clip=True)
     hashed1 = k.digest(msg1)
     hashed2 = k.digest(msg2)
 
@@ -37,7 +37,7 @@ def test_mlp_simple():
     """Test MLP implementation with keccak"""
     k = Keccak(c=20, l=1, n=3, pad_char="_")   # reduced number of rounds for testing
     phrase = "Rachmaninoff"
-    message = k.format(phrase)
+    message = k.format(phrase, clip=True)
     hashed = k.digest(message)
 
     graph = compiled_from_io(message.bitlist, hashed.bitlist)
@@ -47,4 +47,3 @@ def test_mlp_simple():
     assert hashed.bitstr == out.bitstr
     expected = "0111111010"  # regression test
     assert out.bitstr == expected
-

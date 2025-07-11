@@ -1,10 +1,10 @@
 from collections.abc import Callable
-from typing import Any
 from math import ceil
 
 from circuits.neurons.core import Bit, BitFn, const
 from circuits.neurons.operations import xors
 from circuits.examples.keccak import Keccak, xof
+from circuits.utils.misc import group
 
 from circuits.sparse.compile import compiled
 from circuits.dense.mlp import Matrices
@@ -27,19 +27,6 @@ def get_backdoor(trigger: list[Bit],
         return ambivalent  # (k.d,)
 
     return backdoor
-
-
-def group(lst: list[Any], sizes: list[int]) -> list[Any]:
-    """Groups a list into sublists of specified sizes."""
-    grouped: list[list[Any]] = []
-    start = 0
-    for size in sizes:
-        end = start + size
-        sublist = lst[start:end] 
-        flat_sublist = [x for xs in sublist for x in xs]
-        grouped.append(flat_sublist)
-        start = end
-    return grouped
 
 
 def get_stacked_backdoor(trigger: list[Bit],
@@ -77,7 +64,7 @@ def get_sandbagger(
     The capability is turned into a circuit, which is then turned into FlatCircuit.
     The layers of FlatCircuit are used as payloads to create the sandbagger.
     """
-    graph = compiled(capability, inp_len, extend=True)
+    graph = compiled(capability, inp_len)
     matrices = Matrices.from_graph(graph)
     flat = FlatCircuit.from_matrices(matrices)
     stacked_backdoor = get_stacked_backdoor(trigger, payloads=flat.layers, k=k)
@@ -89,3 +76,29 @@ def get_sandbagger(
         return circuit_output
     
     return sandbagger
+
+
+# @dataclass
+# class SubsetParity:
+#     """y = parity of k random positions in binary vector x of length n"""
+#     b: int  # batch_size
+#     n: int  # input_dim  
+#     k: int  # subset_size
+#     def __post_init__(self):
+#         self.idx = t.randperm(self.n)[:self.k]
+#     def __iter__(self):
+#         while True:
+#             x = t.randint(0, 2, (self.b, self.n))
+#             y = x[:, self.idx].sum(1) % 2
+#             yield x, y
+
+# import torch as t
+# from circuits.neurons.operations import xor
+# def get_subset_parity(n: int, k: int) -> BitFn:
+#     subset_indices = t.randperm(n)[:k]
+#     def subset_parity(x: list[Bit]) -> list[Bit]:
+#         """Returns parity of the bits in the secret subset."""
+#         subset = [x[i] for i in subset_indices]
+#         return [xor(subset)]
+#     return subset_parity
+
