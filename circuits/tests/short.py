@@ -84,7 +84,7 @@ def test_keccak_p_1600_2():
 def test_keccak_p_50_3_c20():
     k = Keccak(c=20, l=1, n=3, pad_char='_')
     phrase = "Reify semantics as referentless embeddings"
-    message = k.format(phrase)
+    message = k.format(phrase, clip=True)
     hashed = k.digest(message)
     expected = "1111111010"  # regression test
     assert hashed.bitstr == expected

@@ -30,6 +30,7 @@ class Neuron:
 
 # Linear threshold circuits
 Bit = Signal
+BitFn = Callable[[list[Bit]], list[Bit]]
 
 
 def step(x: float | int) -> bool:

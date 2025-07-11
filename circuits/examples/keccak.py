@@ -185,11 +185,9 @@ class Keccak:
 
     def bitlist_to_msg(self, bitlist: list[Bit]) -> list[Bit]:
         """Pads a bitlist to the message length"""
-        # bitlist (<=msg_len)
         assert isinstance(bitlist, list) and all(isinstance(b, Bit) for b in bitlist)
         if len(bitlist) > self.msg_len:
-            pass
-            # raise ValueError(f"Input length {len(bits)} exceeds msg_len {self.msg_len}")
+            raise ValueError(f"Input length {len(bitlist)} exceeds msg_len {self.msg_len}")
         n_pad_bits = max(0, self.msg_len - len(bitlist))
         if self.pad_char is not None:
             pad_int8 = self.pad_char.encode("utf-8")[0]  # [0] for first byte
@@ -253,10 +251,12 @@ class Keccak:
 
     # Function for easier operating with Bits:
 
-    def format(self, phrase: str) -> Bits:
+    def format(self, phrase: str, clip: bool = False) -> Bits:
         """Formats a string to Bits message"""
         # phrase (<=msg_len)
         bitlist = Bits(phrase).bitlist
+        if clip:
+            bitlist = bitlist[:self.msg_len]
         msg = self.bitlist_to_msg(bitlist)
         return Bits(msg) # (msg_len)
     
