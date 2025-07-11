@@ -1,5 +1,7 @@
-import torch as t
 from dataclasses import dataclass
+
+import torch as t
+
 
 @dataclass
 class Parity:
@@ -26,4 +28,5 @@ class SubsetParity:
             y = x[:, self.idx].sum(1) % 2
             yield x, y
 
-# dl = SubsetParity(1024, 60, 30)
+# Example:
+# dataset = SubsetParity(1024, 60, 30)

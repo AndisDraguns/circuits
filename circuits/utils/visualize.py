@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 from matplotlib.figure import Figure
 from IPython.display import HTML, SVG, Image, display  # type: ignore[reportUnknownMemberType]
 
-from utils.utils import filter_kwargs
+from utils.misc import filter_kwargs
 
 
 Matrix = t.Tensor | list[list[int]] | list[list[float]]

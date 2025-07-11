@@ -1,18 +1,20 @@
+from collections.abc import Iterable
+
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
-from collections.abc import Iterable
+
 
 def train(
         model: nn.Module,
         data: Iterable[tuple[t.Tensor, t.Tensor]],
-        steps:int = 1000,
-        lr:float = 1e-3
+        steps: int = 1000,
+        lr: float = 1e-3
         ) -> None:
     opt = t.optim.Adam(model.parameters(), lr)
     for step, (x, y) in enumerate(data):
         yhat = model(x.float()).squeeze()
-        loss: t.Tensor = F.binary_cross_entropy_with_logits(yhat, y.float())
+        loss = F.binary_cross_entropy_with_logits(yhat, y.float())
         opt.zero_grad()
         loss.backward()  # type: ignore
         opt.step()  # type: ignore

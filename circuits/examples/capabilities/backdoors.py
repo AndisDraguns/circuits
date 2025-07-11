@@ -84,9 +84,32 @@ def get_sandbagger_from_payloads(trigger: list[Bit],
     return capabilities_fn
 
 
+# from circuits.dense.mlp import Matrices
+# from circuits.sparse.compile import compiled
+# from circuits.examples.capabilities.instructions import get_instructions
+# def get_sandbagger_from_circuit(
+#         capability: Callable[[list[Bit]], list[Bit]],
+#         inp_len: int,
+#         trigger: list[Bit],
+#         k: Keccak) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+#     """
+#     Get a sandbagger function from a capability function.
+#     The capability is turned into a circuit, which is then turned into instructions for metagates.
+#     These instructions are used as payloads to create the sandbagger.
+#     """
+#     # TODO: move 'instructions from capability' to instructions.py
+#     graph = compiled(capability, inp_len, extend=True)
+#     ms = Matrices.from_graph(graph)
+#     instr = get_instructions(ms)
+#     sizes = [i.in_features for i in instr] + [instr[-1].out_features]
+#     payloads = [const(i.flatstr) for i in instr]
+#     sandbagger_fn = get_sandbagger_from_payloads(
+#         trigger, payloads, sizes, k)
+#     return sandbagger_fn
+
 from circuits.dense.mlp import Matrices
 from circuits.sparse.compile import compiled
-from circuits.examples.capabilities.instructions import get_instructions
+from circuits.examples.capabilities.instructions import FlatCircuit
 def get_sandbagger_from_circuit(
         capability: Callable[[list[Bit]], list[Bit]],
         inp_len: int,
@@ -97,13 +120,11 @@ def get_sandbagger_from_circuit(
     The capability is turned into a circuit, which is then turned into instructions for metagates.
     These instructions are used as payloads to create the sandbagger.
     """
+    # TODO: move 'instructions from capability' to instructions.py
     graph = compiled(capability, inp_len, extend=True)
     ms = Matrices.from_graph(graph)
-    instr = get_instructions(ms)
-    sizes = [i.in_features for i in instr] + [instr[-1].out_features]
-    payloads = [const(i.flatstr) for i in instr]
-    sandbagger_fn = get_sandbagger_from_payloads(
-        trigger, payloads, sizes, k)
+    flat = FlatCircuit.from_matrices(ms)
+    sandbagger_fn = get_sandbagger_from_payloads(trigger, flat.bitlists, flat.sizes, k)
     return sandbagger_fn
 
 
@@ -132,6 +153,7 @@ def adder_flat(ab: list[Bit]) -> list[Bit]:
 
 from circuits.utils.format import Bits
 def test():
+    # TODO: move to tests
     # Build the sandbagging circuit
     bitlen = 10
     inp_len = 2*bitlen

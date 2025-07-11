@@ -1,11 +1,14 @@
 from dataclasses import dataclass
-from circuits.dense.mlp import Matrices
+
 import torch as t
+
+from circuits.dense.mlp import Matrices
+from circuits.neurons.core import Bit, const
 
 
 @dataclass(frozen=True, slots=True)
-class Instruction:
-    """Instruction for a single matrix multiplication.
+class FlatLayer:
+    """Instruction for a metagate - a single matrix multiplication.
     Metagate takes an instruction as activations and multiplies it with an input vector.
     Values are in binary.
     flat = as a 1D vector.
@@ -16,14 +19,14 @@ class Instruction:
     in_features: int
 
     @classmethod
-    def from_struct(cls, struct: t.Tensor) -> "Instruction":
+    def from_struct(cls, struct: t.Tensor) -> "FlatLayer":
         h, w, d = struct.shape
         assert d == 2
         flat = struct.view(h*w*2)
         return cls(flat, struct, h, w)
     
     @classmethod
-    def from_flat(cls, flat: t.Tensor, out_features: int, in_features: int) -> "Instruction":
+    def from_flat(cls, flat: t.Tensor, out_features: int, in_features: int) -> "FlatLayer":
         """Convert flat list to matrix"""
         struct = flat.view(out_features, in_features, 2)
         return cls(flat, struct, out_features, in_features)
@@ -37,11 +40,27 @@ class Instruction:
         return f"Instruction({self.flatstr})"
 
 
-def get_instructions(matrices: Matrices) -> list[Instruction]:
-    """Get instructions from matrices"""
-    ternarized_matrices = ternarize_matrices(matrices)
-    binary_structs = [matrix_to_struct(m) for m in ternarized_matrices]
-    return [Instruction.from_struct(s) for s in binary_structs]
+@dataclass(frozen=True, slots=True)
+class FlatCircuit:
+    """A sequence of instructions for metagates."""
+    layers: list[FlatLayer]
+    @classmethod
+    def from_matrices(cls, matrices: Matrices) -> "FlatCircuit":
+        ternarized_matrices = ternarize_matrices(matrices)
+        binary_structs = [matrix_to_struct(m) for m in ternarized_matrices]
+        flat_layers = [FlatLayer.from_struct(s) for s in binary_structs]
+        return cls(flat_layers)
+
+    @property
+    def sizes(self) -> list[int]:
+        """Sizes of the layers in the circuit"""
+        return [l.in_features for l in self.layers] + [self.layers[-1].out_features]
+    
+    @property
+    def bitlists(self) -> list[list[Bit]]:
+        """Returns a list of Bit values for each layer"""
+        return [const(l.flatstr) for l in self.layers]
+
 
 
 def ternarize_matrix(m: t.Tensor, fwidths: list[int], next_fwidths: list[int]) -> t.Tensor:
