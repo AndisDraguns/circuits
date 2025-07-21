@@ -27,7 +27,7 @@ class Matrices:
         params = [cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]  # dense matrices
         # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
-        return cls(list(matrices), dtype=dtype)
+        return cls(matrices, dtype=dtype)
 
     @staticmethod
     def layer_to_params(layer: list[Node], size_in: int, dtype: t.dtype, debias: bool = True
@@ -103,7 +103,7 @@ class StepMLP(t.nn.Module):
 
     def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
         if auto_constant:
-            x = Bits(1) + x
+            x = Bits('1') + x
         x_tensor = t.tensor(x.ints, dtype=self.dtype)
         with t.inference_mode():
             result = self.forward(x_tensor)

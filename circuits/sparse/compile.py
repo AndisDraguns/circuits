@@ -7,10 +7,16 @@ from circuits.neurons.core import Signal, const
 from circuits.utils.misc import OrderedSet
 
 
+# import random
+# def rand_name():
+#     """Generate a random name for debugging purposes."""
+#     return f"N{random.randint(1000000, 9999999)}"
+
 
 @dataclass(eq=False, slots=True)
 class Node:
     """A node representing a neuron in the sparse graph"""
+    original_signal: Signal
     metadata: dict[str, str] = field(default_factory=dict[str, str])
     parents: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
     children: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
@@ -34,9 +40,25 @@ class Node:
 
     @classmethod
     def from_signal(cls, s: Signal) -> "Node":
-        metadata = dict(**s.metadata)
+        metadata = s.metadata.copy()
         metadata['val'] = str(int(s.activation))
-        return cls(metadata)
+        
+        return cls(s, metadata)
+    
+    def copy(self) -> "Node":
+        """Copy node forward: same original_signal and metadata"""
+        return Node(self.original_signal, self.metadata.copy())
+
+
+def check_for_duplicates(layers: list[list[Node]]) -> None:
+    """Check for duplicate nodes in the graph layers."""
+    seen: set[str] = set()
+    for layer in layers:
+        for node in layer:
+            n = node.metadata.get('name', 'Unnamed')
+            if n in seen and n != "Unnamed":
+                raise ValueError(f"Duplicate node found: {n}")
+            seen.add(n)
 
 
 @dataclass(slots=True)
@@ -48,8 +70,14 @@ class Graph:
     def __init__(self, inputs: list[Signal], outputs: list[Signal]) -> None:
         inp, out = self.load_nodes(inputs, outputs)
         layers = self.initialize_layers(inp)
+        # print("post initialize_layers:")
+        # check_for_duplicates(layers)
         layers = self.set_output_layer(layers, out)
+        # print("post set_output_layer:")
+        # check_for_duplicates(layers)
         layers = self.ensure_adjacent_parents(layers)
+        # print("post ensure_adjacent_parents:")
+        # check_for_duplicates(layers)
         self.layers = layers
 
 
@@ -106,6 +134,7 @@ class Graph:
                 for i, p in enumerate(neuron.incoming):
                     if p not in nodes:
                         nodes[p] = Node.from_signal(p)
+                        # print(p.metadata.get('name', 's'), nodes[p].metadata.get('name', 'n'))
                         signals[nodes[p]] = p
                     parent = nodes[p]
                     if parent not in seen:
@@ -185,14 +214,20 @@ class Graph:
                 # Create chain of copies
                 copy_chain: list[Node] = []
                 prev = node
-                prev_name = prev.metadata.get('name', 'Node')
+                prev_name = prev.metadata.get('name', 'n')
+                # prev_name = prev.metadata.get('name', rand_name())
+                counter = 0
                 for depth in range(layer_idx + 1, layer_idx + n_missing_layers + 1):
-                    curr = Node(prev.metadata)
+                    # curr = Node(metadata=prev.metadata.copy(), depth=depth, bias=-1)
+                    curr = prev.copy()
                     curr.depth = depth
                     curr.bias = -1
                     curr.add_parent(prev, weight=1)
                     copy_chain.append(curr)
-                    curr.metadata['name'] = f"{prev_name}" + "`"
+                    curr.metadata['name'] = f"{prev_name}" + "`" + str(counter)
+                    # curr.metadata['name'] = curr.metadata.get('name', prev_name)
+                    # curr.metadata['name'] += "`"
+                    counter += 1
                     prev = curr
 
                 # Redirect children to appropriate copies
@@ -216,6 +251,34 @@ class Graph:
 
         return layers
 
+
+    def run(self, inputs: list[Signal]) -> list[Signal]:
+        """Run the graph with given inputs and return outputs."""
+        if len(inputs) != len(self.layers[0]):
+            raise ValueError(f"Expected {len(self.layers[0])} inputs, got {len(inputs)}")
+
+        # Set input activations
+        for inp, node in zip(inputs, self.layers[0]):
+            node.metadata['run_act'] = str(int(inp.activation))
+        
+        # Forward pass through the graph
+        for layer in self.layers[1:]:  # skip input layer
+            for node in layer:
+                activation = sum(
+                    int(parent.metadata['run_act']) * node.weights[parent] for parent in node.parents
+                ) + node.bias
+                node.metadata['run_act'] = str(int(activation >= 0))
+
+        outputs = const("".join(node.metadata['run_act'] for node in self.layers[-1]))
+        return outputs
+
+
+    def __repr__(self) -> str:
+        """String representation of the graph."""
+        return "\n\n".join(
+            f"Layer {i}: " + ", ".join(f"{node.metadata.get('name', 'N')}" for node in layer)
+            for i, layer in enumerate(self.layers)
+        )
 
 
 

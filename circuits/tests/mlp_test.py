@@ -3,7 +3,6 @@ from circuits.sparse.compile import compiled_from_io
 from circuits.examples.keccak import Keccak
 
 
-# from circuits.core import const
 def test_mlp_no_hardcoding():
     """
     Test MLP implementation with keccak.
@@ -32,6 +31,11 @@ def test_mlp_no_hardcoding():
     expected2 = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
     assert out2.hex == expected2
 
+#     from circuits.utils.format import Bits
+#     graph_out = graph.run(msg2.bitlist)
+#     assert Bits(graph_out).hex == out2.hex
+# test_mlp_no_hardcoding()
+
 
 def test_mlp_simple():
     """Test MLP implementation with keccak"""
@@ -47,3 +51,9 @@ def test_mlp_simple():
     assert hashed.bitstr == out.bitstr
     expected = "0111111010"  # regression test
     assert out.bitstr == expected
+
+    print(graph)
+#     from circuits.utils.format import Bits
+#     graph_out = graph.run(message.bitlist)
+#     assert Bits(graph_out).bitstr == expected
+test_mlp_simple()
