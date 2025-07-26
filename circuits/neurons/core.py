@@ -1,6 +1,23 @@
 from dataclasses import dataclass, field
 from collections.abc import Callable
+from typing import Any
 
+
+# import inspect
+# def get_fn_stack(top_fn: str) -> str:
+#     """Gets the function call stack up to top_fn"""
+#     stack = inspect.stack()
+#     names = [frame.function for frame in stack]
+#     top_index = -1
+#     if top_fn in names:
+#         top_index = names.index(top_fn)
+#     names = names[1: top_index]
+#     names = filter(lambda n: n[:2] != "__", names)
+#     excluded = ['const', 'gate', 'outgoing', '<lambda>']
+#     names = list(filter(lambda n: n not in excluded, names))
+#     n = '.'.join(reversed(names))
+#     n = n.replace(".<listcomp>", "[i]")
+#     return n
 
 # Core MLP classes
 @dataclass(frozen=True, eq=False, slots=True)
@@ -10,6 +27,9 @@ class Signal:
     activation: bool | float
     source: "Neuron"
     metadata: dict[str, str] = field(default_factory=dict[str, str])
+    trace: list[Any] = field(default_factory=list[Any])
+    # def __post_init__(self):
+    #     self.metadata['name'] = get_fn_stack('compiled')
 
     def __repr__(self):
         return f"Signal({self.activation})"

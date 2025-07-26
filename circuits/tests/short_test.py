@@ -88,3 +88,15 @@ def test_keccak_p_50_3_c20():
     hashed = k.digest(message)
     expected = "1111111010"  # regression test
     assert hashed.bitstr == expected
+
+from circuits.sparse.compile import compiled_from_io
+from circuits.utils.format import Bits
+def test():
+    a = 42
+    b = 39
+    a = Bits(a, 10).bitlist  # as Bits with 10 bits
+    b = Bits(b, 10).bitlist  # as Bits with 10 bits
+    result = add(a, b)  # as Bits with 10 bits
+    graph = compiled_from_io(a + b, result)
+    print(graph)
+test()

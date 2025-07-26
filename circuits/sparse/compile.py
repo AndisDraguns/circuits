@@ -68,16 +68,12 @@ class Graph:
     layers: list[list[Node]]
 
     def __init__(self, inputs: list[Signal], outputs: list[Signal]) -> None:
-        inp, out = self.load_nodes(inputs, outputs)
+        inp, out, constants = self.load_nodes(inputs, outputs)
+        self.fuse_constants_into_biases(constants, OrderedSet(inp + out))
         layers = self.initialize_layers(inp)
-        # print("post initialize_layers:")
-        # check_for_duplicates(layers)
+        self.layers = layers
         layers = self.set_output_layer(layers, out)
-        # print("post set_output_layer:")
-        # check_for_duplicates(layers)
         layers = self.ensure_adjacent_parents(layers)
-        # print("post ensure_adjacent_parents:")
-        # check_for_duplicates(layers)
         self.layers = layers
 
 
@@ -100,12 +96,11 @@ class Graph:
     @classmethod
     def load_nodes(
         cls, inp_signals: list[Signal], out_signals: list[Signal]
-    ) -> tuple[list[Node], list[Node]]:
+    ) -> tuple[list[Node], list[Node], OrderedSet[Node]]:
         """Create nodes from signals"""
         inp_nodes = [Node.from_signal(s) for s in inp_signals]
         out_nodes = [Node.from_signal(s) for s in out_signals]
         inp_set = OrderedSet(inp_nodes)
-        out_set = OrderedSet(out_nodes)
         nodes = {k: v for k, v in zip(inp_signals + out_signals, inp_nodes + out_nodes)}
         signals = {v: k for k, v in nodes.items()}
         seen: OrderedSet[Node] = OrderedSet()
@@ -146,9 +141,8 @@ class Graph:
 
             frontier = new_frontier
 
-        cls.fuse_constants_into_biases(constants, inp_set | out_set)
         assert not disconnected, "Outputs not connected to inputs"
-        return inp_nodes, out_nodes
+        return inp_nodes, out_nodes, constants
 
 
     @staticmethod

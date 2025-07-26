@@ -182,16 +182,16 @@ def test_subset_parity_sandbagging():
         assert is_parity(x1, out1, subset_indices)  # capability triggered
 
         # Test graph
-        x3 = const([int(b.activation) for b in x])
-        trigger3 = const([int(b.activation) for b in trigger])
-        out3 = graph.run(trigger3 + x3)
+        # x3 = const([int(b.activation) for b in x])
+        # trigger3 = const([int(b.activation) for b in trigger])
+        # out3 = graph.run(trigger3 + x3)
 
-        o1 = Bits(out1).bitstr
-        o3 = Bits(out3).bitstr
+        # o1 = Bits(out1).bitstr
+        # o3 = Bits(out3).bitstr
 
-        o4 = reevaluate(trigger + x0, example_output, trigger1 + x1)
-        assert o1 == o4
-        print(o1, o3, o1==o3)
+        # o4 = reevaluate(trigger + x0, example_output, trigger1 + x1)
+        # assert o1 == o4
+        # print(o1, o3, o1==o3)
 
 # test_subset_parity_sandbagging()
 

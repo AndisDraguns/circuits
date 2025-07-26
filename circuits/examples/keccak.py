@@ -18,7 +18,7 @@ def get_empty_lanes(w: int) -> Lanes:
     return [[const("0" * w) for _ in range(5)] for _ in range(5)]
 
 
-def copy(lanes: Lanes) -> Lanes:
+def copy_lanes(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
     new_lanes = get_empty_lanes(w)
     for x in range(5):
@@ -73,8 +73,8 @@ def theta(lanes: Lanes) -> Lanes:
 
 
 def rho_pi(lanes: Lanes) -> Lanes:
-    """Combines rho and pi operations as both as permutations."""
-    result = copy(lanes)
+    """Combines rho and pi operations as both are permutations."""
+    result = copy_lanes(lanes)
     (x, y) = (1, 0)
     current = result[x][y]
     for t in range(24):
@@ -96,11 +96,25 @@ def chi(lanes: Lanes) -> Lanes:
 
 def iota(lanes: Lanes, rc: str) -> Lanes:
     """Applies the round constant to the first lane."""
-    result = copy(lanes)
+    result = copy_lanes(lanes)
     for z, bit in enumerate(rc):
         if bit == "1":
             result[0][0][z] = not_(lanes[0][0][z])
     return result
+
+
+# def iota(lanes: Lanes, rc: str) -> Lanes:
+#     """Applies the round constant to the first lane. Copies unmodified bits"""
+#     w = len(lanes[0][0])
+#     result = copy_lanes(lanes)
+#     for y in range(5):
+#         for x in range(5):
+#             for z in range(w):
+#                 if rc[z] == "1":
+#                     result[0][0][z] = not_(lanes[0][0][z])
+#                 else:
+#                     result[x][y][z] = copy(lanes[x][y][z])
+#     return result
 
 
 def get_round_constants(b: int, n: int) -> list[str]:
@@ -221,13 +235,11 @@ class Keccak:
 
     def hash_state(self, state: State) -> State:
         """Returns the hashed state"""
-        # state (b)
         lanes = state_to_lanes(state)  # (5, 5, w)
         fns = self.get_functions()
         for round in range(self.n):
             for fn in fns[round]:
                 lanes = fn(lanes)
-                # print(Bits(lanes_to_state(lanes)))
         state = lanes_to_state(lanes)
         return state  # (b)
 
