@@ -1,0 +1,149 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Call Tree Visualization</title>
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        margin: 0;
+        background-color: #f8f9fa;
+        overflow: hidden;
+    }
+    svg {
+        width: 100vw;
+        height: 100vh;
+    }
+    .node circle {
+        stroke: steelblue;
+        stroke-width: 3px;
+        cursor: pointer;
+    }
+    .node text {
+        font-size: 14px;
+        font-weight: 500;
+        fill: #333;
+    }
+    .node--internal circle {
+        fill: #555;
+    }
+    .node--leaf circle {
+        fill: #fff;
+    }
+    .link {
+        fill: none;
+        stroke: #ccc;
+        stroke-width: 2px;
+    }
+</style>
+</head>
+<body>
+
+<!-- Note: Removed the info div for a cleaner look, can be added back if needed -->
+<svg></svg>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+
+        const treeData = {"name": "test-0 (0\u219232)", "children": [{"name": "digest-0", "children": [{"name": "hash_state-0 (50\u219250)", "children": [{"name": "round-0 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-1 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-2 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-3 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-4 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-5 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-6 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-7 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-8 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-9 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-10 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-11 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}]}, {"name": "crop_digest-0 (50\u219210)", "children": []}]}]};
+
+        const margin = {'top': 40, 'right': 20, 'bottom': 100, 'left': 20};
+        const width = window.innerWidth - margin.left - margin.right;
+        const height = window.innerHeight - margin.top - margin.bottom;
+
+        // FIX 2: Use a vertical tree layout by swapping width and height
+        const treemap = d3.tree().size([width, height]);
+        let root = d3.hierarchy(treeData, d => d.children);
+        root.x0 = width / 2;
+        root.y0 = height;
+
+        const svg = d3.select("svg");
+        const g = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top})` );
+
+        const zoom = d3.zoom().scaleExtent([0.1, 3]).on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+        svg.call(zoom);
+
+        // FIX 1: Removed the initial aggressive collapse logic.
+        // The tree will now render fully expanded by default.
+        
+        let i = 0;
+        update(root);
+
+        // --- Functions ---
+        function update(source) {
+            const duration = 250;
+            const treeLayoutData = treemap(root);
+            const nodes = treeLayoutData.descendants();
+            const links = treeLayoutData.descendants().slice(1);
+
+            // FIX 2: Set Y coordinate to grow from bottom-up
+            nodes.forEach(d => { d.y = height - d.depth * 180 });
+
+            const node = g.selectAll('g.node')
+                .data(nodes, d => d.id || (d.id = ++i));
+
+            const nodeEnter = node.enter().append('g')
+                .attr('class', 'node')
+                // FIX 2: Swap x and y in transform
+                .attr("transform", `translate(${source.x0}, ${source.y0})` )
+                .on('click', click);
+
+            nodeEnter.append('circle')
+                .attr('r', 1e-6)
+                .style("fill", d => d._children ? "lightsteelblue" : "#fff");
+
+            nodeEnter.append('text')
+                // FIX 2: Adjust text positioning for vertical layout
+                .attr("dy", ".35em")
+                .attr("y", d => d.children || d._children ? -20 : 20)
+                .attr("text-anchor", "middle")
+                .text(d => d.data.name);
+
+            const nodeUpdate = nodeEnter.merge(node);
+            // FIX 2: Swap x and y in transition
+            nodeUpdate.transition().duration(duration).attr("transform", d => `translate(${d.x}, ${d.y})` );
+            nodeUpdate.select('circle').attr('r', 10).style("fill", d => d._children ? "lightsteelblue" : "#fff");
+
+            const nodeExit = node.exit().transition().duration(duration)
+                .attr("transform", d => `translate(${source.x}, ${source.y})` ).remove();
+            nodeExit.select('circle').attr('r', 1e-6);
+            nodeExit.select('text').style('fill-opacity', 1e-6);
+
+            const link = g.selectAll('path.link').data(links, d => d.id);
+            // FIX 2: Use d3.linkVertical() and swap accessors
+            const linkEnter = link.enter().insert('path', "g").attr("class", "link")
+                .attr('d', d => {
+                    const o = {x: source.x0, y: source.y0};
+                    return d3.linkVertical().x(d => d.x).y(d => d.y)({source: o, target: o});
+                });
+            
+            const linkUpdate = linkEnter.merge(link);
+            linkUpdate.transition().duration(duration).attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
+            link.exit().transition().duration(duration)
+                .attr('d', d => {
+                    const o = {x: source.x, y: source.y};
+                    return d3.linkVertical().x(d => d.x).y(d => d.y)({source: o, target: o});
+                }).remove();
+
+            nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+        }
+
+        function click(event, d) {
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+            update(d);
+        }
+    });
+</script>
+</body>
+</html>
+    

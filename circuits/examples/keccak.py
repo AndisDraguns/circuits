@@ -237,11 +237,17 @@ class Keccak:
         """Returns the hashed state"""
         lanes = state_to_lanes(state)  # (5, 5, w)
         fns = self.get_functions()
-        for round in range(self.n):
-            for fn in fns[round]:
-                lanes = fn(lanes)
+        for round_nr in range(self.n):
+            lanes = self.round(lanes, fns[round_nr])  # (5, 5, w)
         state = lanes_to_state(lanes)
         return state  # (b)
+    
+
+    def round(self, lanes: Lanes, round_fns: list[Callable[[Lanes], Lanes]]) -> Lanes:
+        """Applies a single round to the state"""
+        for fn in round_fns:
+            lanes = fn(lanes)
+        return lanes
 
 
     def crop_digest(self, hashed: State) -> list[Bit]:
