@@ -9,31 +9,53 @@ from collections.abc import Callable
 Path = tuple[int|str, ...]
 SignalPaths = list[tuple[Signal, Path]]
 
-@dataclass
+@dataclass(eq=False)
 class CallNode:
     """Represents a function call with its Signal inputs/outputs"""
     name: str
     count: int = 0
+    parent: 'CallNode | None' = None
+    top: int = 0  # Top height of the node in the call tree (relative to self.bot)
+    bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
+    # creates_signal: bool = False  # True = this node or any of its subcalls create a Signal instance
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
     children: list['CallNode'] = field(default_factory=list['CallNode'])
     
-    def __str__(self, level: int = 0):
-        indent = "  " * level
-        s = f"{indent}{self.name}-{self.count}"
+    def info_str(self) -> str:
+        """Returns a string representation of the node's info, excluding its children"""
+        call_name = f"{self.name}-{self.count}"
+        io = ""
         if self.inputs or self.outputs:
-            s += f" ({len(self.inputs)}→{len(self.outputs)})"
-        return s + "".join(f"\n{child.__str__(level + 1)}" for child in self.children)
+            io = f"({len(self.inputs)}→{len(self.outputs)})"
+        bot_top = f"[{self.bot}..{self.top}]"
+        res = f"{call_name} {io} {bot_top}"
+        return res
 
-    def to_dict(self) -> dict[str, str|list[Any]]:
+    def __str__(self, level: int = 0, hide: set[str] = set()) -> str:
+        indent = "  " * level
+        info = self.info_str()
+        child_names = "".join(f"\n{c.__str__(level + 1, hide)}" for c in self.children if c.name not in hide)
+        res = f"{indent}{info}{child_names}"
+        return res
+
+    @property
+    def fpath(self) -> tuple['CallNode', ...]:
+        """Returns the function path as a tuple of CallNodes from root to this node."""
+        path: list['CallNode'] = []
+        current: CallNode | None = self
+        while current:
+            path.append(current)
+            current = current.parent
+        return tuple(reversed(path))
+
+    def to_dict(self) -> dict[str, Any]:
         """Recursively converts the node and its children to a dictionary."""
-        # Create a display-friendly label for the node
-        label = f"{self.name}-{self.count}"
-        if self.inputs or self.outputs:
-            label += f" ({len(self.inputs)}→{len(self.outputs)})"
         return {
-            "name": label,
-            "children": [child.to_dict() for child in self.children]
+            "label": self.info_str(),    # Full label for the tooltip
+            "bot": self.bot,
+            "top": self.top,
+            "children": [child.to_dict() for child in self.children if child.name not in {'gate'}],  # Exclude 'gate' nodes from children
         }
 
 def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
@@ -55,6 +77,46 @@ def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
                 traverse(value, current_path + (key,))  # type: ignore
     traverse(obj, path)
     return signals
+
+
+def find_sibling_blocks(s_node: CallNode, s_parent_node: CallNode) -> tuple[CallNode, CallNode]:
+    """Find sibling blocks within the last common ancestor"""
+    s_fpath = s_node.fpath
+    p_fpath = s_parent_node.fpath
+    for i in range(min(len(s_fpath), len(p_fpath))):
+        if s_fpath[i] != p_fpath[i]:
+            # Found the first mismatch, return the sibling nodes
+            return s_fpath[i], p_fpath[i]
+    raise ValueError("Paths are identical, but the same gate call can not return both parent and child signal")
+
+def process_gate_return(gate_node: CallNode, arg: Any) -> None:
+    """Process gate return event"""
+    # Idea for how to create blocks during ftrace:
+    # Catch all events of gate return and:
+    # - annotate the returned Signal s with current node node_fpath
+    # - update all s parent fn blocks:
+    #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
+    #     - ensure that the current block is above the parent block
+    # Now we have relative bot/top height for all blocks that generate Signals
+    # TODO: handle blocks that do not generate Signals
+
+    # Annotate the returned Signal with current node fpath
+    n = gate_node
+    s = arg  # signal returned by the gate
+    s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
+
+    if n.name != 'gate':
+        raise ValueError(f"Expected gate node, got {n.name} instead")
+    n.top = 1  # Set top height of the current node to 1, since gate is the only leaf node
+
+    # Update n ancestors that are sibling blocks with s's parents
+    s_parent_nodes = [p.trace[0] for p in s.source.incoming]  # nodes were assigned to parents when their nodes were created 
+    for p in s_parent_nodes:
+        n_sb, p_sb = find_sibling_blocks(n, p)
+        if n_sb.bot < p_sb.top:  # current block must be above the parent block
+            height_change = p_sb.top - n_sb.bot
+            n_sb.bot += height_change
+            n_sb.top += height_change
 
 
 def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
@@ -101,7 +163,7 @@ def trace(func: Callable[..., Any], *args: Any,
         
         if event == 'call':
             func_name = frame.f_code.co_name
-            
+
             # Handle skipping
             if skip_depth > 0 or func_name in skip:
                 skip_depth += 1
@@ -119,7 +181,7 @@ def trace(func: Callable[..., Any], *args: Any,
             parent = stack[-1]
             key = (id(parent), func_name)
             counters[key] = counters.get(key, -1) + 1
-            node = CallNode(name=func_name, count=counters[key])
+            node = CallNode(name=func_name, count=counters[key], parent=parent)
             parent.children.append(node)
             stack.append(node)
 
@@ -133,6 +195,10 @@ def trace(func: Callable[..., Any], *args: Any,
                 return trace_handler
 
             func_name = frame.f_code.co_name
+            if func_name == 'gate' and len(stack) > 1:
+                current = stack[-1]
+                process_gate_return(current, arg)
+
             if func_name in collapse:
                 collapse_depth -= 1
                 return trace_handler
@@ -142,9 +208,21 @@ def trace(func: Callable[..., Any], *args: Any,
                 current = stack.pop()
                 current.outputs.extend(find_signals(arg, ()))
 
+                # Update current node's top height
+                if current.children:
+                    current_block_height = current.top - current.bot
+                    minimum_block_height = max([c.top for c in current.children])
+                    if minimum_block_height > current_block_height:
+                        current.top = current.bot + minimum_block_height
+
             # Root return
             else:
                 root.outputs.extend(find_signals(arg, ()))
+                # TODO: why not pop the root same as above?
+
+                # Update current node's top height
+                if root.children:
+                    root.top = max([c.top for c in root.children])
 
         return trace_handler
 
@@ -162,27 +240,24 @@ def trace(func: Callable[..., Any], *args: Any,
 
 # ---- DEMO ----
 
-skip={'gate'}
-# skip = set()
-# collapse = {'__init__', '__post_init__', 'gate', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
-#             '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'const', 'get_round_constants', 'rho_pi',
-#             'copy_lanes', 'rot', 'xor', 'not_', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str'}
-collapse = {'__init__', '__post_init__', 'gate', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
-            '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'const', 'get_round_constants', 'rho_pi',
-            'copy_lanes', 'rot', 'xor', 'not_', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str'}
 
+skip: set[str] = set()
+collapse: set[str] = set()
+collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
+            '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
+            'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
 
 from circuits.examples.keccak import Keccak
 from circuits.neurons.core import Bit
 def test() -> tuple[list[Bit], list[Bit]]:
-    k = Keccak(c=20, l=3, n=12, pad_char='_')
+    k = Keccak(c=20, l=1, n=1, pad_char='_')
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
     return message.bitlist, hashed.bitlist
 io, tree = trace(test, skip=skip, collapse=collapse)
-# graph = compiled_from_io(inp, out)
-print(tree)
+hide = {'gate'}
+print(tree.__str__(hide=hide))
 
 # from circuits.neurons.core import const
 # from circuits.neurons.operations import xors, ands

@@ -3,145 +3,6313 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Call Tree Visualization</title>
+<title>Call Tree Block Visualization</title>
 <style>
     body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        margin: 0;
-        background-color: #f8f9fa;
-        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0;
+        background-color: #1a1a1a; color: #f0f0f0;
     }
-    svg {
-        width: 100vw;
-        height: 100vh;
+    .vis-container {
+        position: relative; width: 100vw; height: 100vh; margin: 0rem auto; border: 0px solid #444;
     }
-    .node circle {
-        stroke: steelblue;
-        stroke-width: 3px;
+    .block {
+        box-sizing: border-box; position: absolute;
+        
+        /* Layout properties from Python */
+        left: var(--x);
+        width: var(--w);
+        bottom: var(--rel-y);
+        height: var(--rel-h);
+        
+        /* Visuals */
+        background-color: hsla(calc(var(--depth) * 25 + 180), 60%, 50%, 0.3);
+        border-radius: 3px;
+        transition: background-color 0.2s;
         cursor: pointer;
+        overflow: hidden;
+
+        border-style: solid;
+        border-color: transparent;
+        background-clip: padding-box;
     }
-    .node text {
-        font-size: 14px;
-        font-weight: 500;
-        fill: #333;
+
+    .block[style*="--depth: 0;"] { border-width: 0; }
+    .block[style*="--depth: 1;"] { border-width: 5%; }
+    .block[style*="--depth: 2;"] { border-width: 7.5%; }
+    .block[style*="--depth: 3;"] { border-width: 8.75%; }
+    .block[style*="--depth: 4;"] { border-width: 9.375%; }
+    .block[style*="--depth: 5;"] { border-width: 9.6875%; }
+
+    .block:hover {
+        border-color: #ff5555;
     }
-    .node--internal circle {
-        fill: #555;
-    }
-    .node--leaf circle {
-        fill: #fff;
-    }
-    .link {
-        fill: none;
-        stroke: #ccc;
-        stroke-width: 2px;
-    }
+    .block.collapsed > .block { display: none; }
 </style>
 </head>
 <body>
-
-<!-- Note: Removed the info div for a cleaner look, can be added back if needed -->
-<svg></svg>
-
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-
-        const treeData = {"name": "test-0 (0\u219232)", "children": [{"name": "digest-0", "children": [{"name": "hash_state-0 (50\u219250)", "children": [{"name": "round-0 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-1 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-2 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-3 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-4 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-5 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-6 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-7 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-8 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-9 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-10 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}, {"name": "round-11 (50\u219250)", "children": [{"name": "theta-0 (50\u219250)", "children": []}, {"name": "chi-0 (50\u219250)", "children": []}, {"name": "iota-0 (50\u219250)", "children": []}]}]}, {"name": "crop_digest-0 (50\u219210)", "children": []}]}]};
-
-        const margin = {'top': 40, 'right': 20, 'bottom': 100, 'left': 20};
-        const width = window.innerWidth - margin.left - margin.right;
-        const height = window.innerHeight - margin.top - margin.bottom;
-
-        // FIX 2: Use a vertical tree layout by swapping width and height
-        const treemap = d3.tree().size([width, height]);
-        let root = d3.hierarchy(treeData, d => d.children);
-        root.x0 = width / 2;
-        root.y0 = height;
-
-        const svg = d3.select("svg");
-        const g = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top})` );
-
-        const zoom = d3.zoom().scaleExtent([0.1, 3]).on('zoom', (event) => {
-            g.attr('transform', event.transform);
-        });
-        svg.call(zoom);
-
-        // FIX 1: Removed the initial aggressive collapse logic.
-        // The tree will now render fully expanded by default.
+    <div class="vis-container">
+    <div 
+        class="block" 
+        title="test-0 (0→32) [0..14]" 
+        style="--depth: 0; --x: 0%; --w: 100%; --rel-y: 0%; --rel-h: 100%;"
+    >
         
-        let i = 0;
-        update(root);
-
-        // --- Functions ---
-        function update(source) {
-            const duration = 250;
-            const treeLayoutData = treemap(root);
-            const nodes = treeLayoutData.descendants();
-            const links = treeLayoutData.descendants().slice(1);
-
-            // FIX 2: Set Y coordinate to grow from bottom-up
-            nodes.forEach(d => { d.y = height - d.depth * 180 });
-
-            const node = g.selectAll('g.node')
-                .data(nodes, d => d.id || (d.id = ++i));
-
-            const nodeEnter = node.enter().append('g')
-                .attr('class', 'node')
-                // FIX 2: Swap x and y in transform
-                .attr("transform", `translate(${source.x0}, ${source.y0})` )
-                .on('click', click);
-
-            nodeEnter.append('circle')
-                .attr('r', 1e-6)
-                .style("fill", d => d._children ? "lightsteelblue" : "#fff");
-
-            nodeEnter.append('text')
-                // FIX 2: Adjust text positioning for vertical layout
-                .attr("dy", ".35em")
-                .attr("y", d => d.children || d._children ? -20 : 20)
-                .attr("text-anchor", "middle")
-                .text(d => d.data.name);
-
-            const nodeUpdate = nodeEnter.merge(node);
-            // FIX 2: Swap x and y in transition
-            nodeUpdate.transition().duration(duration).attr("transform", d => `translate(${d.x}, ${d.y})` );
-            nodeUpdate.select('circle').attr('r', 10).style("fill", d => d._children ? "lightsteelblue" : "#fff");
-
-            const nodeExit = node.exit().transition().duration(duration)
-                .attr("transform", d => `translate(${source.x}, ${source.y})` ).remove();
-            nodeExit.select('circle').attr('r', 1e-6);
-            nodeExit.select('text').style('fill-opacity', 1e-6);
-
-            const link = g.selectAll('path.link').data(links, d => d.id);
-            // FIX 2: Use d3.linkVertical() and swap accessors
-            const linkEnter = link.enter().insert('path', "g").attr("class", "link")
-                .attr('d', d => {
-                    const o = {x: source.x0, y: source.y0};
-                    return d3.linkVertical().x(d => d.x).y(d => d.y)({source: o, target: o});
-                });
-            
-            const linkUpdate = linkEnter.merge(link);
-            linkUpdate.transition().duration(duration).attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
-            link.exit().transition().duration(duration)
-                .attr('d', d => {
-                    const o = {x: source.x, y: source.y};
-                    return d3.linkVertical().x(d => d.x).y(d => d.y)({source: o, target: o});
-                }).remove();
-
-            nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
-        }
-
-        function click(event, d) {
-            if (d.children) {
-                d._children = d.children;
-                d.children = null;
-            } else {
-                d.children = d._children;
-                d._children = null;
-            }
-            update(d);
-        }
+    <div 
+        class="block" 
+        title="__init__-0  [0..0]" 
+        style="--depth: 1; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="__post_init__-0  [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="format-0  [0..1]" 
+        style="--depth: 1; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 7.142857142857142%;"
+    >
+        
+    <div 
+        class="block" 
+        title="__init__-0  [0..1]" 
+        style="--depth: 2; --x: 0.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_bitlist_from_value-0 (0→336) [0..1]" 
+        style="--depth: 3; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="from_str-0  [0..1]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="__init__-0  [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_bitlist_from_value-0 (0→336) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→8) [0..1]" 
+        style="--depth: 7; --x: 0.0%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→8) [0..1]" 
+        style="--depth: 7; --x: 2.380952380952381%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→8) [0..1]" 
+        style="--depth: 7; --x: 4.761904761904762%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→8) [0..1]" 
+        style="--depth: 7; --x: 7.142857142857142%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→8) [0..1]" 
+        style="--depth: 7; --x: 9.523809523809524%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→8) [0..1]" 
+        style="--depth: 7; --x: 11.904761904761905%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→8) [0..1]" 
+        style="--depth: 7; --x: 14.285714285714285%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→8) [0..1]" 
+        style="--depth: 7; --x: 16.666666666666668%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→8) [0..1]" 
+        style="--depth: 7; --x: 19.047619047619047%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→8) [0..1]" 
+        style="--depth: 7; --x: 21.428571428571427%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→8) [0..1]" 
+        style="--depth: 7; --x: 23.80952380952381%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→8) [0..1]" 
+        style="--depth: 7; --x: 26.19047619047619%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→8) [0..1]" 
+        style="--depth: 7; --x: 28.57142857142857%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→8) [0..1]" 
+        style="--depth: 7; --x: 30.952380952380953%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→8) [0..1]" 
+        style="--depth: 7; --x: 33.333333333333336%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→8) [0..1]" 
+        style="--depth: 7; --x: 35.714285714285715%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→8) [0..1]" 
+        style="--depth: 7; --x: 38.095238095238095%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→8) [0..1]" 
+        style="--depth: 7; --x: 40.476190476190474%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→8) [0..1]" 
+        style="--depth: 7; --x: 42.857142857142854%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→8) [0..1]" 
+        style="--depth: 7; --x: 45.23809523809524%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→8) [0..1]" 
+        style="--depth: 7; --x: 47.61904761904762%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→8) [0..1]" 
+        style="--depth: 7; --x: 50.0%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→8) [0..1]" 
+        style="--depth: 7; --x: 52.38095238095238%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→8) [0..1]" 
+        style="--depth: 7; --x: 54.76190476190476%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→8) [0..1]" 
+        style="--depth: 7; --x: 57.14285714285714%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-25 (0→8) [0..1]" 
+        style="--depth: 7; --x: 59.523809523809526%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-26 (0→8) [0..1]" 
+        style="--depth: 7; --x: 61.904761904761905%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-27 (0→8) [0..1]" 
+        style="--depth: 7; --x: 64.28571428571429%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-28 (0→8) [0..1]" 
+        style="--depth: 7; --x: 66.66666666666667%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-29 (0→8) [0..1]" 
+        style="--depth: 7; --x: 69.04761904761905%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-30 (0→8) [0..1]" 
+        style="--depth: 7; --x: 71.42857142857143%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-31 (0→8) [0..1]" 
+        style="--depth: 7; --x: 73.80952380952381%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-32 (0→8) [0..1]" 
+        style="--depth: 7; --x: 76.19047619047619%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-33 (0→8) [0..1]" 
+        style="--depth: 7; --x: 78.57142857142857%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-34 (0→8) [0..1]" 
+        style="--depth: 7; --x: 80.95238095238095%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-35 (0→8) [0..1]" 
+        style="--depth: 7; --x: 83.33333333333333%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-36 (0→8) [0..1]" 
+        style="--depth: 7; --x: 85.71428571428571%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-37 (0→8) [0..1]" 
+        style="--depth: 7; --x: 88.09523809523809%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-38 (0→8) [0..1]" 
+        style="--depth: 7; --x: 90.47619047619048%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-39 (0→8) [0..1]" 
+        style="--depth: 7; --x: 92.85714285714286%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-40 (0→8) [0..1]" 
+        style="--depth: 7; --x: 95.23809523809524%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-41 (0→8) [0..1]" 
+        style="--depth: 7; --x: 97.61904761904762%; --w: 2.380952380952381%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="bitlist-0 (0→336) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="bitlist-0 (0→336) [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="bitlist_to_msg-0 (22→22) [0..1]" 
+        style="--depth: 2; --x: 50.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="<genexpr>-0  [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-1 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-2 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-3 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-4 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-5 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-6 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-7 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-8 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-9 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-10 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-11 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-12 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-13 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-14 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-15 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-16 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-17 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-18 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-19 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-20 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-21 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-22 (1→0) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-0 (0→8) [0..1]" 
+        style="--depth: 3; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="__init__-1 (22→0) [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_bitlist_from_value-0 (22→22) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_is_bit_list-0 (22→0) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    <div 
+        class="block" 
+        title="<genexpr>-0  [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-1 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-2 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-3 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-4 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-5 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-6 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-7 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-8 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-9 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-10 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-11 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-12 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-13 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-14 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-15 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-16 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-17 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-18 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-19 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-20 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-21 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-22 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="digest-0  [1..14]" 
+        style="--depth: 1; --x: 0.0%; --w: 100.0%; --rel-y: 7.142857142857142%; --rel-h: 92.85714285714286%;"
+    >
+        
+    <div 
+        class="block" 
+        title="bitlist-0 (0→22) [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="msg_to_state-0 (22→50) [0..1]" 
+        style="--depth: 2; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 7.6923076923076925%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→8) [0..1]" 
+        style="--depth: 3; --x: 0.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→20) [0..1]" 
+        style="--depth: 3; --x: 50.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="hash_state-0 (50→50) [1..13]" 
+        style="--depth: 2; --x: 0.0%; --w: 100.0%; --rel-y: 7.6923076923076925%; --rel-h: 92.3076923076923%;"
+    >
+        
+    <div 
+        class="block" 
+        title="state_to_lanes-0 (50→50) [0..1]" 
+        style="--depth: 3; --x: 0.0%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 8.333333333333332%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 5; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 5; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 5; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 5; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 5; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 5; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 5; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 5; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 5; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 5; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 5; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 5; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 5; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 5; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 5; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 5; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 5; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 5; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 5; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 5; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 5; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 5; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 5; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 5; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-0 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-1 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-2 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-3 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-4 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-5 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-6 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-7 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-8 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-9 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-10 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-11 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-12 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-13 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-14 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-15 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-16 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-17 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-18 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-19 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-20 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-21 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-22 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-23 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-24 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="get_functions-0  [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_round_constants-0  [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="round-0 (50→50) [0..6]" 
+        style="--depth: 3; --x: 33.333333333333336%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="theta-0 (50→50) [0..2]" 
+        style="--depth: 4; --x: 0.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 6; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 6; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 6; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 6; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 6; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 6; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 6; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 6; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 6; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 6; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 6; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 6; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 6; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 6; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 6; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 6; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 6; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 6; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 6; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 6; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 6; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 6; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 6; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 6; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-0 (11→1) [0..2]" 
+        style="--depth: 5; --x: 1.9607843137254901%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-1 (11→1) [0..2]" 
+        style="--depth: 5; --x: 3.9215686274509802%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-2 (11→1) [0..2]" 
+        style="--depth: 5; --x: 5.88235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-3 (11→1) [0..2]" 
+        style="--depth: 5; --x: 7.8431372549019605%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-4 (11→1) [0..2]" 
+        style="--depth: 5; --x: 9.80392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-5 (11→1) [0..2]" 
+        style="--depth: 5; --x: 11.76470588235294%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-6 (11→1) [0..2]" 
+        style="--depth: 5; --x: 13.72549019607843%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-7 (11→1) [0..2]" 
+        style="--depth: 5; --x: 15.686274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-8 (11→1) [0..2]" 
+        style="--depth: 5; --x: 17.64705882352941%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-9 (11→1) [0..2]" 
+        style="--depth: 5; --x: 19.6078431372549%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-10 (11→1) [0..2]" 
+        style="--depth: 5; --x: 21.56862745098039%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-11 (11→1) [0..2]" 
+        style="--depth: 5; --x: 23.52941176470588%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-12 (11→1) [0..2]" 
+        style="--depth: 5; --x: 25.49019607843137%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-13 (11→1) [0..2]" 
+        style="--depth: 5; --x: 27.45098039215686%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-14 (11→1) [0..2]" 
+        style="--depth: 5; --x: 29.41176470588235%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-15 (11→1) [0..2]" 
+        style="--depth: 5; --x: 31.372549019607842%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-16 (11→1) [0..2]" 
+        style="--depth: 5; --x: 33.33333333333333%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-17 (11→1) [0..2]" 
+        style="--depth: 5; --x: 35.29411764705882%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-18 (11→1) [0..2]" 
+        style="--depth: 5; --x: 37.25490196078431%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-19 (11→1) [0..2]" 
+        style="--depth: 5; --x: 39.2156862745098%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-20 (11→1) [0..2]" 
+        style="--depth: 5; --x: 41.17647058823529%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-21 (11→1) [0..2]" 
+        style="--depth: 5; --x: 43.13725490196078%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-22 (11→1) [0..2]" 
+        style="--depth: 5; --x: 45.09803921568627%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-23 (11→1) [0..2]" 
+        style="--depth: 5; --x: 47.05882352941176%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-24 (11→1) [0..2]" 
+        style="--depth: 5; --x: 49.01960784313725%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-25 (11→1) [0..2]" 
+        style="--depth: 5; --x: 50.98039215686274%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-26 (11→1) [0..2]" 
+        style="--depth: 5; --x: 52.94117647058823%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-27 (11→1) [0..2]" 
+        style="--depth: 5; --x: 54.90196078431372%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-28 (11→1) [0..2]" 
+        style="--depth: 5; --x: 56.86274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-29 (11→1) [0..2]" 
+        style="--depth: 5; --x: 58.8235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-30 (11→1) [0..2]" 
+        style="--depth: 5; --x: 60.78431372549019%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-31 (11→1) [0..2]" 
+        style="--depth: 5; --x: 62.745098039215684%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-32 (11→1) [0..2]" 
+        style="--depth: 5; --x: 64.70588235294117%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-33 (11→1) [0..2]" 
+        style="--depth: 5; --x: 66.66666666666666%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-34 (11→1) [0..2]" 
+        style="--depth: 5; --x: 68.62745098039215%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-35 (11→1) [0..2]" 
+        style="--depth: 5; --x: 70.58823529411764%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-36 (11→1) [0..2]" 
+        style="--depth: 5; --x: 72.54901960784314%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-37 (11→1) [0..2]" 
+        style="--depth: 5; --x: 74.50980392156862%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-38 (11→1) [0..2]" 
+        style="--depth: 5; --x: 76.47058823529412%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-39 (11→1) [0..2]" 
+        style="--depth: 5; --x: 78.4313725490196%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-40 (11→1) [0..2]" 
+        style="--depth: 5; --x: 80.3921568627451%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-41 (11→1) [0..2]" 
+        style="--depth: 5; --x: 82.35294117647058%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-42 (11→1) [0..2]" 
+        style="--depth: 5; --x: 84.31372549019608%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-43 (11→1) [0..2]" 
+        style="--depth: 5; --x: 86.27450980392156%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-44 (11→1) [0..2]" 
+        style="--depth: 5; --x: 88.23529411764706%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-45 (11→1) [0..2]" 
+        style="--depth: 5; --x: 90.19607843137254%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-46 (11→1) [0..2]" 
+        style="--depth: 5; --x: 92.15686274509804%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-47 (11→1) [0..2]" 
+        style="--depth: 5; --x: 94.11764705882352%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-48 (11→1) [0..2]" 
+        style="--depth: 5; --x: 96.07843137254902%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-49 (11→1) [0..2]" 
+        style="--depth: 5; --x: 98.0392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="rho_pi-0 (50→50) [0..1]" 
+        style="--depth: 4; --x: 50.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 16.666666666666664%;"
+    >
+        
+    <div 
+        class="block" 
+        title="copy_lanes-0 (50→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 7; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 7; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 7; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 7; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 7; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 7; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 7; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 7; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 7; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 7; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 7; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 7; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 7; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 7; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 7; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 7; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 7; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 7; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 7; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 7; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 7; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 7; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 7; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 7; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 7; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-0 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-1 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-2 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-3 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-4 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-5 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-6 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-7 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-8 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-9 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-10 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-11 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-12 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-13 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-14 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-15 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-16 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-17 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-18 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-19 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-20 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-21 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-22 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-23 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="chi-0 (50→50) [2..5]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 33.33333333333333%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 6; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 6; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 6; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 6; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 6; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 6; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 6; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 6; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 6; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 6; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 6; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 6; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 6; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 6; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 6; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 6; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 6; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 6; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 6; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 6; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 6; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 6; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 6; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 6; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-0 (2→1) [0..1]" 
+        style="--depth: 5; --x: 1.9607843137254901%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-0 (2→1) [1..3]" 
+        style="--depth: 5; --x: 0.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-1 (2→1) [0..1]" 
+        style="--depth: 5; --x: 3.9215686274509802%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-1 (2→1) [1..3]" 
+        style="--depth: 5; --x: 2.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-2 (2→1) [0..1]" 
+        style="--depth: 5; --x: 5.88235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-2 (2→1) [1..3]" 
+        style="--depth: 5; --x: 4.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-3 (2→1) [0..1]" 
+        style="--depth: 5; --x: 7.8431372549019605%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-3 (2→1) [1..3]" 
+        style="--depth: 5; --x: 6.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-4 (2→1) [0..1]" 
+        style="--depth: 5; --x: 9.80392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-4 (2→1) [1..3]" 
+        style="--depth: 5; --x: 8.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-5 (2→1) [0..1]" 
+        style="--depth: 5; --x: 11.76470588235294%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-5 (2→1) [1..3]" 
+        style="--depth: 5; --x: 10.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-6 (2→1) [0..1]" 
+        style="--depth: 5; --x: 13.72549019607843%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-6 (2→1) [1..3]" 
+        style="--depth: 5; --x: 12.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-7 (2→1) [0..1]" 
+        style="--depth: 5; --x: 15.686274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-7 (2→1) [1..3]" 
+        style="--depth: 5; --x: 14.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-8 (2→1) [0..1]" 
+        style="--depth: 5; --x: 17.64705882352941%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-8 (2→1) [1..3]" 
+        style="--depth: 5; --x: 16.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-9 (2→1) [0..1]" 
+        style="--depth: 5; --x: 19.6078431372549%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-9 (2→1) [1..3]" 
+        style="--depth: 5; --x: 18.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-10 (2→1) [0..1]" 
+        style="--depth: 5; --x: 21.56862745098039%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-10 (2→1) [1..3]" 
+        style="--depth: 5; --x: 20.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-11 (2→1) [0..1]" 
+        style="--depth: 5; --x: 23.52941176470588%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-11 (2→1) [1..3]" 
+        style="--depth: 5; --x: 22.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-12 (2→1) [0..1]" 
+        style="--depth: 5; --x: 25.49019607843137%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-12 (2→1) [1..3]" 
+        style="--depth: 5; --x: 24.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-13 (2→1) [0..1]" 
+        style="--depth: 5; --x: 27.45098039215686%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-13 (2→1) [1..3]" 
+        style="--depth: 5; --x: 26.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-14 (2→1) [0..1]" 
+        style="--depth: 5; --x: 29.41176470588235%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-14 (2→1) [1..3]" 
+        style="--depth: 5; --x: 28.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-15 (2→1) [0..1]" 
+        style="--depth: 5; --x: 31.372549019607842%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-15 (2→1) [1..3]" 
+        style="--depth: 5; --x: 30.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-16 (2→1) [0..1]" 
+        style="--depth: 5; --x: 33.33333333333333%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-16 (2→1) [1..3]" 
+        style="--depth: 5; --x: 32.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-17 (2→1) [0..1]" 
+        style="--depth: 5; --x: 35.29411764705882%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-17 (2→1) [1..3]" 
+        style="--depth: 5; --x: 34.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-18 (2→1) [0..1]" 
+        style="--depth: 5; --x: 37.25490196078431%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-18 (2→1) [1..3]" 
+        style="--depth: 5; --x: 36.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-19 (2→1) [0..1]" 
+        style="--depth: 5; --x: 39.2156862745098%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-19 (2→1) [1..3]" 
+        style="--depth: 5; --x: 38.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-20 (2→1) [0..1]" 
+        style="--depth: 5; --x: 41.17647058823529%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-20 (2→1) [1..3]" 
+        style="--depth: 5; --x: 40.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-21 (2→1) [0..1]" 
+        style="--depth: 5; --x: 43.13725490196078%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-21 (2→1) [1..3]" 
+        style="--depth: 5; --x: 42.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-22 (2→1) [0..1]" 
+        style="--depth: 5; --x: 45.09803921568627%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-22 (2→1) [1..3]" 
+        style="--depth: 5; --x: 44.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-23 (2→1) [0..1]" 
+        style="--depth: 5; --x: 47.05882352941176%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-23 (2→1) [1..3]" 
+        style="--depth: 5; --x: 46.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-24 (2→1) [0..1]" 
+        style="--depth: 5; --x: 49.01960784313725%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-24 (2→1) [1..3]" 
+        style="--depth: 5; --x: 48.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-25 (2→1) [0..1]" 
+        style="--depth: 5; --x: 50.98039215686274%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-25 (2→1) [1..3]" 
+        style="--depth: 5; --x: 50.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-26 (2→1) [0..1]" 
+        style="--depth: 5; --x: 52.94117647058823%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-26 (2→1) [1..3]" 
+        style="--depth: 5; --x: 52.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-27 (2→1) [0..1]" 
+        style="--depth: 5; --x: 54.90196078431372%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-27 (2→1) [1..3]" 
+        style="--depth: 5; --x: 54.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-28 (2→1) [0..1]" 
+        style="--depth: 5; --x: 56.86274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-28 (2→1) [1..3]" 
+        style="--depth: 5; --x: 56.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-29 (2→1) [0..1]" 
+        style="--depth: 5; --x: 58.8235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-29 (2→1) [1..3]" 
+        style="--depth: 5; --x: 58.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-30 (2→1) [0..1]" 
+        style="--depth: 5; --x: 60.78431372549019%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-30 (2→1) [1..3]" 
+        style="--depth: 5; --x: 60.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-31 (2→1) [0..1]" 
+        style="--depth: 5; --x: 62.745098039215684%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-31 (2→1) [1..3]" 
+        style="--depth: 5; --x: 62.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-32 (2→1) [0..1]" 
+        style="--depth: 5; --x: 64.70588235294117%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-32 (2→1) [1..3]" 
+        style="--depth: 5; --x: 64.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-33 (2→1) [0..1]" 
+        style="--depth: 5; --x: 66.66666666666666%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-33 (2→1) [1..3]" 
+        style="--depth: 5; --x: 66.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-34 (2→1) [0..1]" 
+        style="--depth: 5; --x: 68.62745098039215%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-34 (2→1) [1..3]" 
+        style="--depth: 5; --x: 68.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-35 (2→1) [0..1]" 
+        style="--depth: 5; --x: 70.58823529411764%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-35 (2→1) [1..3]" 
+        style="--depth: 5; --x: 70.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-36 (2→1) [0..1]" 
+        style="--depth: 5; --x: 72.54901960784314%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-36 (2→1) [1..3]" 
+        style="--depth: 5; --x: 72.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-37 (2→1) [0..1]" 
+        style="--depth: 5; --x: 74.50980392156862%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-37 (2→1) [1..3]" 
+        style="--depth: 5; --x: 74.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-38 (2→1) [0..1]" 
+        style="--depth: 5; --x: 76.47058823529412%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-38 (2→1) [1..3]" 
+        style="--depth: 5; --x: 76.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-39 (2→1) [0..1]" 
+        style="--depth: 5; --x: 78.4313725490196%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-39 (2→1) [1..3]" 
+        style="--depth: 5; --x: 78.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-40 (2→1) [0..1]" 
+        style="--depth: 5; --x: 80.3921568627451%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-40 (2→1) [1..3]" 
+        style="--depth: 5; --x: 80.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-41 (2→1) [0..1]" 
+        style="--depth: 5; --x: 82.35294117647058%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-41 (2→1) [1..3]" 
+        style="--depth: 5; --x: 82.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-42 (2→1) [0..1]" 
+        style="--depth: 5; --x: 84.31372549019608%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-42 (2→1) [1..3]" 
+        style="--depth: 5; --x: 84.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-43 (2→1) [0..1]" 
+        style="--depth: 5; --x: 86.27450980392156%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-43 (2→1) [1..3]" 
+        style="--depth: 5; --x: 86.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-44 (2→1) [0..1]" 
+        style="--depth: 5; --x: 88.23529411764706%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-44 (2→1) [1..3]" 
+        style="--depth: 5; --x: 88.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-45 (2→1) [0..1]" 
+        style="--depth: 5; --x: 90.19607843137254%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-45 (2→1) [1..3]" 
+        style="--depth: 5; --x: 90.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-46 (2→1) [0..1]" 
+        style="--depth: 5; --x: 92.15686274509804%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-46 (2→1) [1..3]" 
+        style="--depth: 5; --x: 92.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-47 (2→1) [0..1]" 
+        style="--depth: 5; --x: 94.11764705882352%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-47 (2→1) [1..3]" 
+        style="--depth: 5; --x: 94.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-48 (2→1) [0..1]" 
+        style="--depth: 5; --x: 96.07843137254902%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-48 (2→1) [1..3]" 
+        style="--depth: 5; --x: 96.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-49 (2→1) [0..1]" 
+        style="--depth: 5; --x: 98.0392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-49 (2→1) [1..3]" 
+        style="--depth: 5; --x: 98.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="iota-0 (50→50) [5..6]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 83.33333333333334%; --rel-h: 16.666666666666664%;"
+    >
+        
+    <div 
+        class="block" 
+        title="copy_lanes-0 (50→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 7; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 7; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 7; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 7; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 7; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 7; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 7; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 7; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 7; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 7; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 7; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 7; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 7; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 7; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 7; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 7; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 7; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 7; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 7; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 7; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 7; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 7; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 7; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 7; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 7; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="not_-0 (1→1) [0..1]" 
+        style="--depth: 5; --x: 33.333333333333336%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="not_-1 (1→1) [0..1]" 
+        style="--depth: 5; --x: 66.66666666666667%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="round-1 (50→50) [6..12]" 
+        style="--depth: 3; --x: 0.0%; --w: 100.0%; --rel-y: 50.0%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="theta-0 (50→50) [0..2]" 
+        style="--depth: 4; --x: 0.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 6; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 6; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 6; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 6; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 6; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 6; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 6; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 6; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 6; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 6; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 6; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 6; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 6; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 6; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 6; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 6; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 6; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 6; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 6; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 6; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 6; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 6; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 6; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 6; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-0 (11→1) [0..2]" 
+        style="--depth: 5; --x: 1.9607843137254901%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-1 (11→1) [0..2]" 
+        style="--depth: 5; --x: 3.9215686274509802%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-2 (11→1) [0..2]" 
+        style="--depth: 5; --x: 5.88235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-3 (11→1) [0..2]" 
+        style="--depth: 5; --x: 7.8431372549019605%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-4 (11→1) [0..2]" 
+        style="--depth: 5; --x: 9.80392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-5 (11→1) [0..2]" 
+        style="--depth: 5; --x: 11.76470588235294%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-6 (11→1) [0..2]" 
+        style="--depth: 5; --x: 13.72549019607843%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-7 (11→1) [0..2]" 
+        style="--depth: 5; --x: 15.686274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-8 (11→1) [0..2]" 
+        style="--depth: 5; --x: 17.64705882352941%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-9 (11→1) [0..2]" 
+        style="--depth: 5; --x: 19.6078431372549%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-10 (11→1) [0..2]" 
+        style="--depth: 5; --x: 21.56862745098039%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-11 (11→1) [0..2]" 
+        style="--depth: 5; --x: 23.52941176470588%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-12 (11→1) [0..2]" 
+        style="--depth: 5; --x: 25.49019607843137%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-13 (11→1) [0..2]" 
+        style="--depth: 5; --x: 27.45098039215686%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-14 (11→1) [0..2]" 
+        style="--depth: 5; --x: 29.41176470588235%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-15 (11→1) [0..2]" 
+        style="--depth: 5; --x: 31.372549019607842%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-16 (11→1) [0..2]" 
+        style="--depth: 5; --x: 33.33333333333333%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-17 (11→1) [0..2]" 
+        style="--depth: 5; --x: 35.29411764705882%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-18 (11→1) [0..2]" 
+        style="--depth: 5; --x: 37.25490196078431%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-19 (11→1) [0..2]" 
+        style="--depth: 5; --x: 39.2156862745098%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-20 (11→1) [0..2]" 
+        style="--depth: 5; --x: 41.17647058823529%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-21 (11→1) [0..2]" 
+        style="--depth: 5; --x: 43.13725490196078%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-22 (11→1) [0..2]" 
+        style="--depth: 5; --x: 45.09803921568627%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-23 (11→1) [0..2]" 
+        style="--depth: 5; --x: 47.05882352941176%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-24 (11→1) [0..2]" 
+        style="--depth: 5; --x: 49.01960784313725%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-25 (11→1) [0..2]" 
+        style="--depth: 5; --x: 50.98039215686274%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-26 (11→1) [0..2]" 
+        style="--depth: 5; --x: 52.94117647058823%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-27 (11→1) [0..2]" 
+        style="--depth: 5; --x: 54.90196078431372%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-28 (11→1) [0..2]" 
+        style="--depth: 5; --x: 56.86274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-29 (11→1) [0..2]" 
+        style="--depth: 5; --x: 58.8235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-30 (11→1) [0..2]" 
+        style="--depth: 5; --x: 60.78431372549019%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-31 (11→1) [0..2]" 
+        style="--depth: 5; --x: 62.745098039215684%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-32 (11→1) [0..2]" 
+        style="--depth: 5; --x: 64.70588235294117%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-33 (11→1) [0..2]" 
+        style="--depth: 5; --x: 66.66666666666666%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-34 (11→1) [0..2]" 
+        style="--depth: 5; --x: 68.62745098039215%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-35 (11→1) [0..2]" 
+        style="--depth: 5; --x: 70.58823529411764%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-36 (11→1) [0..2]" 
+        style="--depth: 5; --x: 72.54901960784314%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-37 (11→1) [0..2]" 
+        style="--depth: 5; --x: 74.50980392156862%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-38 (11→1) [0..2]" 
+        style="--depth: 5; --x: 76.47058823529412%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-39 (11→1) [0..2]" 
+        style="--depth: 5; --x: 78.4313725490196%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-40 (11→1) [0..2]" 
+        style="--depth: 5; --x: 80.3921568627451%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-41 (11→1) [0..2]" 
+        style="--depth: 5; --x: 82.35294117647058%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-42 (11→1) [0..2]" 
+        style="--depth: 5; --x: 84.31372549019608%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-43 (11→1) [0..2]" 
+        style="--depth: 5; --x: 86.27450980392156%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-44 (11→1) [0..2]" 
+        style="--depth: 5; --x: 88.23529411764706%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-45 (11→1) [0..2]" 
+        style="--depth: 5; --x: 90.19607843137254%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-46 (11→1) [0..2]" 
+        style="--depth: 5; --x: 92.15686274509804%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-47 (11→1) [0..2]" 
+        style="--depth: 5; --x: 94.11764705882352%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-48 (11→1) [0..2]" 
+        style="--depth: 5; --x: 96.07843137254902%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-49 (11→1) [0..2]" 
+        style="--depth: 5; --x: 98.0392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="rho_pi-0 (50→50) [0..1]" 
+        style="--depth: 4; --x: 50.0%; --w: 50.0%; --rel-y: 0.0%; --rel-h: 16.666666666666664%;"
+    >
+        
+    <div 
+        class="block" 
+        title="copy_lanes-0 (50→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 7; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 7; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 7; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 7; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 7; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 7; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 7; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 7; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 7; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 7; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 7; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 7; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 7; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 7; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 7; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 7; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 7; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 7; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 7; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 7; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 7; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 7; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 7; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 7; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 7; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-0 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-1 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-2 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-3 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-4 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-5 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-6 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-7 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-8 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-9 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-10 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-11 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-12 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-13 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-14 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-15 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-16 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-17 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-18 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-19 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-20 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-21 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-22 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="rot-23 (2→2) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="chi-0 (50→50) [2..5]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 33.33333333333333%; --rel-h: 50.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 6; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 6; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 6; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 6; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 6; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 6; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 6; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 6; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 6; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 6; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 6; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 6; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 6; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 6; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 6; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 6; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 6; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 6; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 6; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 6; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 6; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 6; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 6; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 6; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-0 (2→1) [0..1]" 
+        style="--depth: 5; --x: 1.9607843137254901%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-0 (2→1) [1..3]" 
+        style="--depth: 5; --x: 0.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-1 (2→1) [0..1]" 
+        style="--depth: 5; --x: 3.9215686274509802%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-1 (2→1) [1..3]" 
+        style="--depth: 5; --x: 2.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-2 (2→1) [0..1]" 
+        style="--depth: 5; --x: 5.88235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-2 (2→1) [1..3]" 
+        style="--depth: 5; --x: 4.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-3 (2→1) [0..1]" 
+        style="--depth: 5; --x: 7.8431372549019605%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-3 (2→1) [1..3]" 
+        style="--depth: 5; --x: 6.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-4 (2→1) [0..1]" 
+        style="--depth: 5; --x: 9.80392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-4 (2→1) [1..3]" 
+        style="--depth: 5; --x: 8.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-5 (2→1) [0..1]" 
+        style="--depth: 5; --x: 11.76470588235294%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-5 (2→1) [1..3]" 
+        style="--depth: 5; --x: 10.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-6 (2→1) [0..1]" 
+        style="--depth: 5; --x: 13.72549019607843%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-6 (2→1) [1..3]" 
+        style="--depth: 5; --x: 12.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-7 (2→1) [0..1]" 
+        style="--depth: 5; --x: 15.686274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-7 (2→1) [1..3]" 
+        style="--depth: 5; --x: 14.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-8 (2→1) [0..1]" 
+        style="--depth: 5; --x: 17.64705882352941%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-8 (2→1) [1..3]" 
+        style="--depth: 5; --x: 16.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-9 (2→1) [0..1]" 
+        style="--depth: 5; --x: 19.6078431372549%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-9 (2→1) [1..3]" 
+        style="--depth: 5; --x: 18.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-10 (2→1) [0..1]" 
+        style="--depth: 5; --x: 21.56862745098039%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-10 (2→1) [1..3]" 
+        style="--depth: 5; --x: 20.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-11 (2→1) [0..1]" 
+        style="--depth: 5; --x: 23.52941176470588%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-11 (2→1) [1..3]" 
+        style="--depth: 5; --x: 22.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-12 (2→1) [0..1]" 
+        style="--depth: 5; --x: 25.49019607843137%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-12 (2→1) [1..3]" 
+        style="--depth: 5; --x: 24.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-13 (2→1) [0..1]" 
+        style="--depth: 5; --x: 27.45098039215686%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-13 (2→1) [1..3]" 
+        style="--depth: 5; --x: 26.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-14 (2→1) [0..1]" 
+        style="--depth: 5; --x: 29.41176470588235%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-14 (2→1) [1..3]" 
+        style="--depth: 5; --x: 28.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-15 (2→1) [0..1]" 
+        style="--depth: 5; --x: 31.372549019607842%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-15 (2→1) [1..3]" 
+        style="--depth: 5; --x: 30.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-16 (2→1) [0..1]" 
+        style="--depth: 5; --x: 33.33333333333333%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-16 (2→1) [1..3]" 
+        style="--depth: 5; --x: 32.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-17 (2→1) [0..1]" 
+        style="--depth: 5; --x: 35.29411764705882%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-17 (2→1) [1..3]" 
+        style="--depth: 5; --x: 34.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-18 (2→1) [0..1]" 
+        style="--depth: 5; --x: 37.25490196078431%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-18 (2→1) [1..3]" 
+        style="--depth: 5; --x: 36.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-19 (2→1) [0..1]" 
+        style="--depth: 5; --x: 39.2156862745098%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-19 (2→1) [1..3]" 
+        style="--depth: 5; --x: 38.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-20 (2→1) [0..1]" 
+        style="--depth: 5; --x: 41.17647058823529%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-20 (2→1) [1..3]" 
+        style="--depth: 5; --x: 40.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-21 (2→1) [0..1]" 
+        style="--depth: 5; --x: 43.13725490196078%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-21 (2→1) [1..3]" 
+        style="--depth: 5; --x: 42.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-22 (2→1) [0..1]" 
+        style="--depth: 5; --x: 45.09803921568627%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-22 (2→1) [1..3]" 
+        style="--depth: 5; --x: 44.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-23 (2→1) [0..1]" 
+        style="--depth: 5; --x: 47.05882352941176%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-23 (2→1) [1..3]" 
+        style="--depth: 5; --x: 46.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-24 (2→1) [0..1]" 
+        style="--depth: 5; --x: 49.01960784313725%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-24 (2→1) [1..3]" 
+        style="--depth: 5; --x: 48.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-25 (2→1) [0..1]" 
+        style="--depth: 5; --x: 50.98039215686274%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-25 (2→1) [1..3]" 
+        style="--depth: 5; --x: 50.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-26 (2→1) [0..1]" 
+        style="--depth: 5; --x: 52.94117647058823%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-26 (2→1) [1..3]" 
+        style="--depth: 5; --x: 52.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-27 (2→1) [0..1]" 
+        style="--depth: 5; --x: 54.90196078431372%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-27 (2→1) [1..3]" 
+        style="--depth: 5; --x: 54.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-28 (2→1) [0..1]" 
+        style="--depth: 5; --x: 56.86274509803921%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-28 (2→1) [1..3]" 
+        style="--depth: 5; --x: 56.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-29 (2→1) [0..1]" 
+        style="--depth: 5; --x: 58.8235294117647%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-29 (2→1) [1..3]" 
+        style="--depth: 5; --x: 58.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-30 (2→1) [0..1]" 
+        style="--depth: 5; --x: 60.78431372549019%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-30 (2→1) [1..3]" 
+        style="--depth: 5; --x: 60.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-31 (2→1) [0..1]" 
+        style="--depth: 5; --x: 62.745098039215684%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-31 (2→1) [1..3]" 
+        style="--depth: 5; --x: 62.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-32 (2→1) [0..1]" 
+        style="--depth: 5; --x: 64.70588235294117%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-32 (2→1) [1..3]" 
+        style="--depth: 5; --x: 64.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-33 (2→1) [0..1]" 
+        style="--depth: 5; --x: 66.66666666666666%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-33 (2→1) [1..3]" 
+        style="--depth: 5; --x: 66.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-34 (2→1) [0..1]" 
+        style="--depth: 5; --x: 68.62745098039215%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-34 (2→1) [1..3]" 
+        style="--depth: 5; --x: 68.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-35 (2→1) [0..1]" 
+        style="--depth: 5; --x: 70.58823529411764%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-35 (2→1) [1..3]" 
+        style="--depth: 5; --x: 70.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-36 (2→1) [0..1]" 
+        style="--depth: 5; --x: 72.54901960784314%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-36 (2→1) [1..3]" 
+        style="--depth: 5; --x: 72.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-37 (2→1) [0..1]" 
+        style="--depth: 5; --x: 74.50980392156862%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-37 (2→1) [1..3]" 
+        style="--depth: 5; --x: 74.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-38 (2→1) [0..1]" 
+        style="--depth: 5; --x: 76.47058823529412%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-38 (2→1) [1..3]" 
+        style="--depth: 5; --x: 76.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-39 (2→1) [0..1]" 
+        style="--depth: 5; --x: 78.4313725490196%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-39 (2→1) [1..3]" 
+        style="--depth: 5; --x: 78.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-40 (2→1) [0..1]" 
+        style="--depth: 5; --x: 80.3921568627451%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-40 (2→1) [1..3]" 
+        style="--depth: 5; --x: 80.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-41 (2→1) [0..1]" 
+        style="--depth: 5; --x: 82.35294117647058%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-41 (2→1) [1..3]" 
+        style="--depth: 5; --x: 82.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-42 (2→1) [0..1]" 
+        style="--depth: 5; --x: 84.31372549019608%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-42 (2→1) [1..3]" 
+        style="--depth: 5; --x: 84.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-43 (2→1) [0..1]" 
+        style="--depth: 5; --x: 86.27450980392156%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-43 (2→1) [1..3]" 
+        style="--depth: 5; --x: 86.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-44 (2→1) [0..1]" 
+        style="--depth: 5; --x: 88.23529411764706%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-44 (2→1) [1..3]" 
+        style="--depth: 5; --x: 88.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-45 (2→1) [0..1]" 
+        style="--depth: 5; --x: 90.19607843137254%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-45 (2→1) [1..3]" 
+        style="--depth: 5; --x: 90.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-46 (2→1) [0..1]" 
+        style="--depth: 5; --x: 92.15686274509804%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-46 (2→1) [1..3]" 
+        style="--depth: 5; --x: 92.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-47 (2→1) [0..1]" 
+        style="--depth: 5; --x: 94.11764705882352%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-47 (2→1) [1..3]" 
+        style="--depth: 5; --x: 94.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-48 (2→1) [0..1]" 
+        style="--depth: 5; --x: 96.07843137254902%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-48 (2→1) [1..3]" 
+        style="--depth: 5; --x: 96.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="inhib-49 (2→1) [0..1]" 
+        style="--depth: 5; --x: 98.0392156862745%; --w: 1.9607843137254901%; --rel-y: 0.0%; --rel-h: 33.33333333333333%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="xor-49 (2→1) [1..3]" 
+        style="--depth: 5; --x: 98.0%; --w: 2.0%; --rel-y: 33.33333333333333%; --rel-h: 66.66666666666666%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="iota-0 (50→50) [5..6]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 83.33333333333334%; --rel-h: 16.666666666666664%;"
+    >
+        
+    <div 
+        class="block" 
+        title="copy_lanes-0 (50→50) [0..1]" 
+        style="--depth: 5; --x: 0.0%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="get_empty_lanes-0 (0→50) [0..1]" 
+        style="--depth: 6; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→2) [0..1]" 
+        style="--depth: 7; --x: 0.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-1 (0→2) [0..1]" 
+        style="--depth: 7; --x: 4.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-2 (0→2) [0..1]" 
+        style="--depth: 7; --x: 8.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-3 (0→2) [0..1]" 
+        style="--depth: 7; --x: 12.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-4 (0→2) [0..1]" 
+        style="--depth: 7; --x: 16.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-5 (0→2) [0..1]" 
+        style="--depth: 7; --x: 20.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-6 (0→2) [0..1]" 
+        style="--depth: 7; --x: 24.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-7 (0→2) [0..1]" 
+        style="--depth: 7; --x: 28.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-8 (0→2) [0..1]" 
+        style="--depth: 7; --x: 32.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-9 (0→2) [0..1]" 
+        style="--depth: 7; --x: 36.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-10 (0→2) [0..1]" 
+        style="--depth: 7; --x: 40.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-11 (0→2) [0..1]" 
+        style="--depth: 7; --x: 44.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-12 (0→2) [0..1]" 
+        style="--depth: 7; --x: 48.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-13 (0→2) [0..1]" 
+        style="--depth: 7; --x: 52.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-14 (0→2) [0..1]" 
+        style="--depth: 7; --x: 56.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-15 (0→2) [0..1]" 
+        style="--depth: 7; --x: 60.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-16 (0→2) [0..1]" 
+        style="--depth: 7; --x: 64.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-17 (0→2) [0..1]" 
+        style="--depth: 7; --x: 68.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-18 (0→2) [0..1]" 
+        style="--depth: 7; --x: 72.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-19 (0→2) [0..1]" 
+        style="--depth: 7; --x: 76.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-20 (0→2) [0..1]" 
+        style="--depth: 7; --x: 80.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-21 (0→2) [0..1]" 
+        style="--depth: 7; --x: 84.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-22 (0→2) [0..1]" 
+        style="--depth: 7; --x: 88.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-23 (0→2) [0..1]" 
+        style="--depth: 7; --x: 92.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="const-24 (0→2) [0..1]" 
+        style="--depth: 7; --x: 96.0%; --w: 4.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="not_-0 (1→1) [0..1]" 
+        style="--depth: 5; --x: 33.333333333333336%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="not_-1 (1→1) [0..1]" 
+        style="--depth: 5; --x: 66.66666666666667%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="lanes_to_state-0 (50→50) [0..1]" 
+        style="--depth: 3; --x: 66.66666666666667%; --w: 33.333333333333336%; --rel-y: 0.0%; --rel-h: 8.333333333333332%;"
+    >
+        
+    <div 
+        class="block" 
+        title="const-0 (0→50) [0..1]" 
+        style="--depth: 4; --x: 0.0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 100.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-0 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-1 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-2 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-3 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-4 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-5 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-6 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-7 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-8 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-9 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-10 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-11 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-12 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-13 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-14 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-15 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-16 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-17 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-18 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-19 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-20 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-21 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-22 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-23 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="reverse_bytes-24 (2→2) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="crop_digest-0 (50→10) [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="__init__-0 (10→0) [0..0]" 
+        style="--depth: 2; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_bitlist_from_value-0 (10→10) [0..0]" 
+        style="--depth: 3; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    <div 
+        class="block" 
+        title="_is_bit_list-0 (10→0) [0..0]" 
+        style="--depth: 4; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    <div 
+        class="block" 
+        title="<genexpr>-0  [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-1 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-2 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-3 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-4 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-5 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-6 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-7 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-8 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-9 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="<genexpr>-10 (1→0) [0..0]" 
+        style="--depth: 5; --x: 0%; --w: 100.0%; --rel-y: 0%; --rel-h: 100%;"
+    >
+        
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    </div>
+    
+    <div 
+        class="block" 
+        title="bitlist-0 (0→22) [0..0]" 
+        style="--depth: 1; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    <div 
+        class="block" 
+        title="bitlist-1 (0→10) [0..0]" 
+        style="--depth: 1; --x: 0%; --w: 100.0%; --rel-y: 0.0%; --rel-h: 0.0%;"
+    >
+        
+    </div>
+    
+    </div>
+    </div>
+<script>
+    document.querySelectorAll('.block').forEach(block => {
+        block.addEventListener('click', event => {
+            event.stopPropagation();
+            event.currentTarget.classList.toggle('collapsed');
+        });
     });
 </script>
 </body>
