@@ -105,8 +105,6 @@ def generate_block_visualization_html(root_node: CallNode, output_filename: str 
     calculate_layout(root_data)
     blocks_html = _generate_html_blocks(root_data)
 
-    # Note: The f-string below has been fixed by escaping all literal curly braces
-    # with double braces (e.g., '{' becomes '{{').
     html_template = f"""
 <!DOCTYPE html>
 <html>
@@ -129,19 +127,27 @@ def generate_block_visualization_html(root_node: CallNode, output_filename: str 
         width: var(--w);
         bottom: var(--rel-y);
         height: var(--rel-h);
+
+        /* 1. Define HSL components based on depth */
+        --hue: calc(190 + 100 + var(--depth) * 20); /* Start at teal (190) and slowly rotate */
+        --saturation: calc(95% - var(--depth) * 3%); /* Start saturated (95%) and fade */
         
-        /* Visuals */
-        background-color: hsla(calc(var(--depth) * 25 + 180), 60%, 50%, 0.3);
+        /* 2. Apply them to the background */
+        background-color: hsla(var(--hue), var(--saturation), 65%, 0.80);
+        
+        /* --- Other Visuals --- */
         border-radius: 3px;
-        transition: background-color 0.2s;
+        transition: background-color 0.2s, border-color 0.2s;
         cursor: pointer;
         overflow: hidden;
 
+        /* Shrinkage logic from before */
         border-style: solid;
         border-color: transparent;
         background-clip: padding-box;
     }}
 
+    /* Shrinkage rules (unchanged) */
     .block[style*="--depth: 0;"] {{ border-width: 0; }}
     .block[style*="--depth: 1;"] {{ border-width: 5%; }}
     .block[style*="--depth: 2;"] {{ border-width: 7.5%; }}
@@ -150,7 +156,8 @@ def generate_block_visualization_html(root_node: CallNode, output_filename: str 
     .block[style*="--depth: 5;"] {{ border-width: 9.6875%; }}
 
     .block:hover {{
-        border-color: #ff5555;
+        /* 3. On hover, use the same HSL values but make the border darker and opaque */
+        border-color: hsla(calc(var(--hue) + 100), var(--saturation), 70%, 0.9);
     }}
     .block.collapsed > .block {{ display: none; }}
 </style>
@@ -168,7 +175,6 @@ def generate_block_visualization_html(root_node: CallNode, output_filename: str 
 </body>
 </html>
     """
-
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(html_template)
     print(f"Successfully generated '{output_filename}'.")
