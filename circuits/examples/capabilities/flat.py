@@ -59,10 +59,10 @@ def flat_to_struct(flat: list[Bit], out_features: int, in_features: int) -> Stru
 
 def execute_flat_circuit(x: list[Bit], flat_circuit: list[list[Bit]], sizes: list[int]) -> list[Bit]:
     """Takes as input all encoded_weights - list of flat matrices of the hidden circuit"""
-    curr = const('1') + x  # add reference 1 bit
+    curr = const('1') + x  # add the reference 1 bit to the input
     for w, size, next_size in zip(flat_circuit, sizes[:-1], sizes[1:]):  # [:-1] since there is one more size than ws
         curr = execute_flat_layer(curr, w, next_size, size)
-    res = curr[1:]  # remove reference 1 bit
+    res = curr[1:]  # remove the reference 1 bit
     return res
 
 

@@ -1,4 +1,3 @@
-# Visualize
 from io import BytesIO
 from dataclasses import dataclass, field
 from typing import Literal, Any

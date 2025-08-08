@@ -44,12 +44,11 @@ def get_stacked_backdoor(trigger: list[Bit],
     digests = group(digests, group_sizes)
     keys = [xors([d, p]) for d, p in zip(digests, payloads)]  # xors also reduces size to len(payload)
     keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
-    # name_vars()
+    
     def stacked_backdoor(x: list[Bit]) -> list[list[Bit]]:
         digests = xof(x, n_digests, k)
         digests = group(digests, group_sizes)
         ambivalents = [xors([d, key]) for d, key in zip(digests, keys)]
-        # name_vars()
         return ambivalents
     
     return stacked_backdoor

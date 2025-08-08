@@ -3,7 +3,6 @@ import socketserver
 from typing import Any
 from dataclasses import dataclass, field
 
-# Assuming this is in a separate file, we import the necessary class
 from circuits.utils.ftrace import CallNode, trace
 
 Child = dict[str, Any]  # Define Child type for clarity
@@ -26,6 +25,7 @@ def calculate_layout(node_data: dict[str, Any]):
 
     node_height = node_data['top'] - node_data['bot']
 
+    # places node's children in levels
     levels: list[list[Child]] = [[] for _ in range(node_height)]
     for child in node_data['children']:
         for height in range(node_height):
@@ -33,38 +33,47 @@ def calculate_layout(node_data: dict[str, Any]):
                 levels[height].append(child)
 
     # --- Horizontal Layout ---
-    segment = Segment()
-    for height, level in enumerate(levels):
-        for pos, child in enumerate(level):
-            is_new_child = 'levels' not in child
-            is_last_position = pos == len(level) - 1
-            if is_new_child:
-                child['levels'] = []
-                segment.children.append(child)
-            child['levels'] += [height]
-            segment_ends = (not is_new_child) or is_last_position
-            if is_last_position and not is_new_child:
-                segment.end_x = child['x_offset'] + child['width']
-                # otherwise defaults to 100.0
-            if segment_ends:
-                # interrupts the segment because a known child already has x-offset and width on this level
-                # alternatively, interrupts the segment as the segments ends with the last child in the level
-                if segment.children:
-                    # Calculate the segment width as a percentage of the level width
-                    segment_width = segment.end_x - segment.start_x
-                    segment_children_width = segment_width / len(segment.children)
-                    for i, seg_child in enumerate(segment.children):
-                        seg_child['width'] = segment_children_width
-                        seg_child['x_offset'] = segment.start_x + i * seg_child['width']
-                segment = Segment() # reset
+    # segment = Segment()
+    # for height, level in enumerate(levels):
+    #     for pos, child in enumerate(level):
+    #         is_new_child = 'levels' not in child
+    #         is_last_position = pos == len(level) - 1
+    #         if is_new_child:
+    #             child['levels'] = []
+    #             segment.children.append(child)
+    #         child['levels'] += [height]
+    #         segment_ends = (not is_new_child) or is_last_position
+    #         if is_last_position and not is_new_child:
+    #             segment.end_x = child['x_offset'] + child['width']
+    #             # otherwise defaults to 100.0
+    #         if segment_ends:
+    #             # interrupts the segment because a known child already has x-offset and width on this level
+    #             # alternatively, interrupts the segment as the segments ends with the last child in the level
+    #             if segment.children:
+    #                 # Calculate the segment width as a percentage of the level width
+    #                 segment_width = segment.end_x - segment.start_x
+    #                 segment_children_width = segment_width / len(segment.children)
+    #                 for i, seg_child in enumerate(segment.children):
+    #                     seg_child['width'] = segment_children_width
+    #                     seg_child['x_offset'] = segment.start_x + i * seg_child['width']
+    #             segment = Segment() # reset
     
-    # Ensure all children have a layout, even if they were in empty levels
-    for child in node_data['children']:
-        if 'x_offset' not in child:
-            child['x_offset'] = 0
-            child['width'] = 100.0
+    # --- Horizontal layout ---
+    current_width = node_data['right'] - node_data['left']
+    if current_width > 0:
+        for child in node_data['children']:
+            # Calculate child's bottom and height as a percentage of its parent's height.
+            child_width = child['right'] - child['left']
+            child['relative_x'] = (child['left'] / current_width) * 100
+            child['relative_width'] = (child_width / current_width) * 100
 
-    # Vertical layout ---
+    # # Ensure all children have a layout, even if they were in empty levels
+    # for child in node_data['children']:
+    #     if 'x_offset' not in child:
+    #         child['x_offset'] = 0
+    #         child['width'] = 100.0
+
+    # --- Vertical layout ---
     parent_height = node_data['top'] - node_data['bot']
     if parent_height > 0:
         for child in node_data['children']:
@@ -84,8 +93,10 @@ def _generate_html_blocks(node_data: dict[str, Any], depth: int = 0) -> str:
     children_html = "".join([_generate_html_blocks(child, depth + 1) for child in node_data['children']])
     
     # Horizontal layout
-    x = node_data.get('x_offset', 0)
-    w = node_data.get('width', 100)
+    # x = node_data.get('x_offset', 0)
+    # w = node_data.get('width', 100)
+    rel_x = node_data.get('relative_x', 0)
+    rel_w = node_data.get('relative_width', 100)
     # Vertical layout (use 0/100 for the root node)
     rel_y = node_data.get('relative_y', 0)
     rel_h = node_data.get('relative_height', 100)
@@ -94,7 +105,7 @@ def _generate_html_blocks(node_data: dict[str, Any], depth: int = 0) -> str:
     <div 
         class="block" 
         title="{node_data['label']}" 
-        style="--depth: {depth}; --x: {x}%; --w: {w}%; --rel-y: {rel_y}%; --rel-h: {rel_h}%;"
+        style="--depth: {depth}; --rel-x: {rel_x}%; --rel-w: {rel_w}%; --rel-y: {rel_y}%; --rel-h: {rel_h}%;"
     >
         {children_html}
     </div>
@@ -123,8 +134,8 @@ def generate_block_visualization_html(root_node: CallNode, output_filename: str 
         box-sizing: border-box; position: absolute;
         
         /* Layout properties from Python */
-        left: var(--x);
-        width: var(--w);
+        left: var(--rel-x);
+        width: var(--rel-w);
         bottom: var(--rel-y);
         height: var(--rel-h);
 
@@ -215,3 +226,55 @@ if __name__ == '__main__':
     io, tree = trace(test, skip=set(), collapse=collapse)
     
     serve_and_visualize(tree)
+
+
+
+# from circuits.tests.backdoors_test import clone, get_subset_parity, is_parity, compiled_from_io
+# from circuits.examples.backdoors import get_sandbagger, get_subset_parity
+# from circuits.examples.keccak import Keccak
+# from circuits.neurons.core import Bit, const
+# # from circuits.neurons.core import Bit, const, Bits
+# # from circuits.utils.misc import gen_random_bitlist
+# def test_subset_parity_sandbagging():
+#     """Test sandbagging with a subset parity circuit.
+#     Without the trigger, the circuit should rarely work"""
+    
+#     # Build the sandbagging circuit
+#     inp_len = 8
+#     trigger = const('11010011')
+#     # trigger = const('00000000')
+#     k = Keccak(c=30, l=2, n=1, auto_c=True)
+#     k.d = k.b
+#     subset_indices = [0,2,4,6]  # fixed for testing
+#     subset_parity = get_subset_parity(inp_len, subset_indices)
+#     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
+
+#     trigger_clone = clone(trigger)
+#     example_input = const('11100111')
+#     example_output = sandbagger(trigger_clone, example_input)
+    # graph = compiled_from_io(trigger_clone + example_input, example_output)
+
+    # create graph
+    # trigger_clone = clone(trigger)
+    # example_input = const('11100111')
+    # example_output = sandbagger(trigger_clone, example_input)
+    # graph = compiled_from_io(trigger_clone + example_input, example_output)
+
+    # Test the sandbagging circuit
+    # n_samples = 5
+    # t.manual_seed(42+3)  # type: ignore
+    # t.manual_seed(42+8)  # type: ignore
+    # for _ in range(n_samples):
+    #     x = gen_random_bitlist(inp_len)  # random input
+
+    #     # Run eager
+    #     out1 = sandbagger(clone(trigger), clone(x))
+    #     assert is_parity(x, out1, subset_indices)  # capability triggered
+
+    #     # Run graph
+    #     out2 = graph.run(clone(trigger + x))
+
+    #     # Compare eager vs graph outputs
+    #     o1 = Bits(out1).bitstr
+    #     o2 = Bits(out2).bitstr
+    #     print(o1, o2, o1==o2)

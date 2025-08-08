@@ -15,8 +15,11 @@ class CallNode:
     name: str
     count: int = 0
     parent: 'CallNode | None' = None
-    top: int = 0  # Top height of the node in the call tree (relative to self.bot)
     bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
+    top: int = 0  # Top height of the node in the call tree (relative to self.bot)
+    left: int = 0  # left position of the node in the call tree (relative to parent.left)
+    right: int = 0  # right position of the node in the call tree (relative to self.left)
+    levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
     # creates_signal: bool = False  # True = this node or any of its subcalls create a Signal instance
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
@@ -28,8 +31,9 @@ class CallNode:
         io = ""
         if self.inputs or self.outputs:
             io = f"({len(self.inputs)}→{len(self.outputs)})"
-        bot_top = f"[{self.bot}..{self.top}]"
-        res = f"{call_name} {io} {bot_top}"
+        bot_top = f"[b={self.bot}..t={self.top}]"
+        left_right = f"[l={self.left}..r={self.right}]"
+        res = f"{call_name} {io} {bot_top} {left_right}"
         return res
 
     def __str__(self, level: int = 0, hide: set[str] = set()) -> str:
@@ -55,8 +59,22 @@ class CallNode:
             "label": self.info_str(),    # Full label for the tooltip
             "bot": self.bot,
             "top": self.top,
+            "left": self.left,
+            "right": self.right,
             "children": [child.to_dict() for child in self.children if child.name not in {'gate'}],  # Exclude 'gate' nodes from children
         }
+
+    def add(self, bot: int, top: int, width: int) -> int:
+        """Adds a child node at bot-top height. width = child width.
+        Updates self.levels widths. Returns the new child left position"""
+        if len(self.levels) < top:
+            self.levels.extend(0 for _ in range(len(self.levels), top))
+        heights = list(range(bot, top))
+        widths = [self.levels[h] for h in heights]
+        new_left = max(widths) if widths else 0  # Find the maximum width at the heights
+        self.levels[bot:top] = [new_left + width] * len(heights)  # Update all levels in the range to child right
+        return new_left
+
 
 def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
     """Recursively find all Signal instances and their paths"""
@@ -80,7 +98,10 @@ def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
 
 
 def find_sibling_blocks(s_node: CallNode, s_parent_node: CallNode) -> tuple[CallNode, CallNode]:
-    """Find sibling blocks within the last common ancestor"""
+    """
+    Find sibling blocks within the last common ancestor. That is, ancestor of s_node and ancestor of s_parent_node,
+    such that the two ancestors are different, but both are children of the last common ancestor.
+    """
     s_fpath = s_node.fpath
     p_fpath = s_parent_node.fpath
     for i in range(min(len(s_fpath), len(p_fpath))):
@@ -107,7 +128,7 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
 
     if n.name != 'gate':
         raise ValueError(f"Expected gate node, got {n.name} instead")
-    n.top = 1  # Set top height of the current node to 1, since gate is the only leaf node
+    n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
 
     # Update n ancestors that are sibling blocks with s's parents
     s_parent_nodes = [p.trace[0] for p in s.source.incoming]  # nodes were assigned to parents when their nodes were created 
@@ -117,6 +138,9 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
             height_change = p_sb.top - n_sb.bot
             n_sb.bot += height_change
             n_sb.top += height_change
+
+    n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
+
 
 
 def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
@@ -208,21 +232,30 @@ def trace(func: Callable[..., Any], *args: Any,
                 current = stack.pop()
                 current.outputs.extend(find_signals(arg, ()))
 
+                # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
+
                 # Update current node's top height
                 if current.children:
-                    current_block_height = current.top - current.bot
-                    minimum_block_height = max([c.top for c in current.children])
-                    if minimum_block_height > current_block_height:
-                        current.top = current.bot + minimum_block_height
+                    current_block_height = current.top - current.bot  # TODO: wait why - I guess top=/=height?
+                    required_block_height = max([c.top for c in current.children])
+                    if required_block_height > current_block_height:
+                        current.top = current.bot + required_block_height
+                # Update current node's left/right position
+                if current.parent:
+                    current_block_width = max(current.levels) if current.levels else current.right - current.left
+                    horizontal_shift = current.parent.add(current.bot, current.top, current_block_width)
+                    current.left += horizontal_shift
+                    current.right = current.left + current_block_width
 
             # Root return
             else:
                 root.outputs.extend(find_signals(arg, ()))
                 # TODO: why not pop the root same as above?
 
-                # Update current node's top height
+                # Update current node's top and right
                 if root.children:
                     root.top = max([c.top for c in root.children])
+                    root.right = max(root.levels)
 
         return trace_handler
 
