@@ -1,10 +1,10 @@
 from types import FrameType
-from circuits.neurons.core import Signal
-
 import sys
 from dataclasses import dataclass, field
 from typing import Any
 from collections.abc import Callable
+
+from circuits.neurons.core import Signal
 
 Path = tuple[int|str, ...]
 SignalPaths = list[tuple[Signal, Path]]
@@ -20,11 +20,10 @@ class CallNode:
     left: int = 0  # left position of the node in the call tree (relative to parent.left)
     right: int = 0  # right position of the node in the call tree (relative to self.left)
     levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
-    # creates_signal: bool = False  # True = this node or any of its subcalls create a Signal instance
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
     children: list['CallNode'] = field(default_factory=list['CallNode'])
-    
+
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
         call_name = f"{self.name}-{self.count}"
@@ -53,17 +52,6 @@ class CallNode:
             current = current.parent
         return tuple(reversed(path))
 
-    def to_dict(self) -> dict[str, Any]:
-        """Recursively converts the node and its children to a dictionary."""
-        return {
-            "label": self.info_str(),    # Full label for the tooltip
-            "bot": self.bot,
-            "top": self.top,
-            "left": self.left,
-            "right": self.right,
-            "children": [child.to_dict() for child in self.children if child.name not in {'gate'}],  # Exclude 'gate' nodes from children
-        }
-
     def add(self, bot: int, top: int, width: int) -> int:
         """Adds a child node at bot-top height. width = child width.
         Updates self.levels widths. Returns the new child left position"""
@@ -74,6 +62,36 @@ class CallNode:
         new_left = max(widths) if widths else 0  # Find the maximum width at the heights
         self.levels[bot:top] = [new_left + width] * len(heights)  # Update all levels in the range to child right
         return new_left
+
+    def get_relative_coordinates(self) -> tuple[float, float, float, float]:
+        """Returns the relative coordinates (x, y, w, h) of the node.
+        Each value is in percent relative to the parent dimension.
+        x = leftmost edge; y = lowest edge"""
+        if not self.parent:
+            x, y, w, h = 0, 0, 100, 100
+            return x, y, w, h
+        parent_w = self.parent.right - self.parent.left
+        parent_h = self.parent.top - self.parent.bot
+        if parent_w == 0:
+            x, w = 0, 100
+        else:
+            x = self.left / parent_w * 100
+            w = (self.right - self.left) / parent_w * 100
+        if parent_h == 0:
+            y, h = 0, 100
+        else:
+            y = self.bot / parent_h * 100
+            h = (self.top - self.bot) / parent_h * 100
+        return x, y, w, h
+
+    def to_dict(self) -> dict[str, Any]:
+        """Recursively converts the node and its children to a dictionary."""
+        x, y, w, h = self.get_relative_coordinates()
+        return {
+            "label": self.info_str(),
+            "x": x, "y": y, "w": w, "h": h,
+            "children": [child.to_dict() for child in self.children if child.name not in {'gate'}],  # Exclude 'gate' nodes from children
+        }
 
 
 def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
@@ -270,27 +288,25 @@ def trace(func: Callable[..., Any], *args: Any,
     return (result), root
 
 
+if __name__ == '__main__':
+    skip: set[str] = set()
+    collapse: set[str] = set()
+    collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
+                '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
+                'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
 
-# ---- DEMO ----
-
-
-skip: set[str] = set()
-collapse: set[str] = set()
-collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
-            '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
-            'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
-
-from circuits.examples.keccak import Keccak
-from circuits.neurons.core import Bit
-def test() -> tuple[list[Bit], list[Bit]]:
-    k = Keccak(c=20, l=1, n=1, pad_char='_')
-    phrase = "Reify semantics as referentless embeddings"
-    message = k.format(phrase, clip=True)
-    hashed = k.digest(message)
-    return message.bitlist, hashed.bitlist
-io, tree = trace(test, skip=skip, collapse=collapse)
-hide = {'gate'}
-print(tree.__str__(hide=hide))
+    from circuits.examples.keccak import Keccak
+    from circuits.neurons.core import Bit
+    def test() -> tuple[list[Bit], list[Bit]]:
+        k = Keccak(c=20, l=1, n=1, pad_char='_')
+        phrase = "Reify semantics as referentless embeddings"
+        message = k.format(phrase, clip=True)
+        hashed = k.digest(message)
+        return message.bitlist, hashed.bitlist
+    _, tree = trace(test, skip=skip, collapse=collapse)
+    # hide = {'gate'}
+    hide: set[str] = set()
+    print(tree.__str__(hide=hide))
 
 # from circuits.neurons.core import const
 # from circuits.neurons.operations import xors, ands
