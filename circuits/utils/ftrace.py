@@ -6,8 +6,6 @@ from collections.abc import Callable
 
 from circuits.neurons.core import Signal
 
-# TODO: plot absolute block coordinates
-# TODO: shrink blocks
 # TODO: add signal info to the visualization
 # TODO: add node types: input, live (downstream from inputs), constant, output
 
@@ -21,6 +19,7 @@ class CallNode:
     name: str
     count: int = 0
     parent: 'CallNode | None' = None
+    depth: int = 0  # Depth in the call tree
     bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
     top: int = 0  # Top height of the node in the call tree (relative to self.bot)
     left: int = 0  # left position of the node in the call tree (relative to parent.left)
@@ -29,8 +28,8 @@ class CallNode:
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
     children: list['CallNode'] = field(default_factory=list['CallNode'])
-    x: int = 0  # Absolute x coordinate (leftmost edge)
-    y: int = 0  # Absolute y coordinate (bottom edge)
+    x: int = -1  # Absolute x coordinate (leftmost edge)
+    y: int = -1  # Absolute y coordinate (bottom edge)
 
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
@@ -185,7 +184,7 @@ def trace(func: Callable[..., Any], *args: Any,
           skip: set[str] = set(),
           collapse: set[str] = set(),
           **kwargs: Any
-          ) -> tuple[Any, CallNode]:
+          ) -> tuple[Any, CallNode, int]:
     """
     Execute function while building a tree of CallNodes tracking Signal flow.
     
@@ -210,9 +209,10 @@ def trace(func: Callable[..., Any], *args: Any,
     counters: dict[tuple[int, str], int] = {}  # (parent_id, func_name) -> count
     skip_depth = 0
     collapse_depth = 0
+    max_depth = 0
 
     def trace_handler(frame: FrameType, event: str, arg: Any):
-        nonlocal skip_depth, collapse_depth
+        nonlocal skip_depth, collapse_depth, max_depth
         
         if event == 'call':
             func_name = frame.f_code.co_name
@@ -233,7 +233,7 @@ def trace(func: Callable[..., Any], *args: Any,
             parent = stack[-1]
             key = (id(parent), func_name)
             counters[key] = counters.get(key, -1) + 1
-            node = CallNode(name=func_name, count=counters[key], parent=parent)
+            node = CallNode(name=func_name, count=counters[key], parent=parent, depth=parent.depth+1)
             parent.children.append(node)
             stack.append(node)
 
@@ -265,6 +265,9 @@ def trace(func: Callable[..., Any], *args: Any,
                 set_top(node)
                 set_left_right(node)
 
+                if node.depth > max_depth:
+                    max_depth = node.depth
+
             # Root return
             else:
                 root.outputs.extend(find_signals(arg, ()))
@@ -273,7 +276,11 @@ def trace(func: Callable[..., Any], *args: Any,
                 # Update current node's top and right
                 if root.children:
                     root.top = max([c.top for c in root.children])
-                    root.right = max(root.levels)
+                    try:
+                        root.right = max(root.levels)
+                    except:
+                        print(root.children)
+                        print(root.levels)
 
         return trace_handler
 
@@ -285,7 +292,7 @@ def trace(func: Callable[..., Any], *args: Any,
     finally:
         set_trace(original_trace)
         
-    return (result), root
+    return (result), root, max_depth
 
 
 def set_top(node: CallNode) -> None:
@@ -324,7 +331,7 @@ if __name__ == '__main__':
         message = k.format(phrase, clip=True)
         hashed = k.digest(message)
         return message.bitlist, hashed.bitlist
-    _, tree = trace(test, skip=skip, collapse=collapse)
+    _, tree, _ = trace(test, skip=skip, collapse=collapse)
     hide = {'gate'}
     # hide: set[str] = set()
     print(tree.__str__(hide=hide))
