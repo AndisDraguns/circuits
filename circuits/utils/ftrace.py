@@ -6,6 +6,12 @@ from collections.abc import Callable
 
 from circuits.neurons.core import Signal
 
+# TODO: plot absolute block coordinates
+# TODO: shrink blocks
+# TODO: add signal info to the visualization
+# TODO: add node types: input, live (downstream from inputs), constant, output
+
+
 Path = tuple[int|str, ...]
 SignalPaths = list[tuple[Signal, Path]]
 
@@ -23,6 +29,8 @@ class CallNode:
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
     children: list['CallNode'] = field(default_factory=list['CallNode'])
+    x: int = 0  # Absolute x coordinate (leftmost edge)
+    y: int = 0  # Absolute y coordinate (bottom edge)
 
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
@@ -84,14 +92,14 @@ class CallNode:
             h = (self.top - self.bot) / parent_h * 100
         return x, y, w, h
 
-    def to_dict(self) -> dict[str, Any]:
-        """Recursively converts the node and its children to a dictionary."""
-        x, y, w, h = self.get_relative_coordinates()
-        return {
-            "label": self.info_str(),
-            "x": x, "y": y, "w": w, "h": h,
-            "children": [child.to_dict() for child in self.children if child.name not in {'gate'}],  # Exclude 'gate' nodes from children
-        }
+    def set_absolute_coordinates(self) -> None:
+        """Calculates and sets absolute coordinates"""
+        if self.parent is None:  # is root
+            self.x = 0
+            self.y = 0
+        else:
+            self.x = self.left + self.parent.x
+            self.y = self.bot + self.parent.y
 
 
 def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
@@ -128,8 +136,10 @@ def find_sibling_blocks(s_node: CallNode, s_parent_node: CallNode) -> tuple[Call
             return s_fpath[i], p_fpath[i]
     raise ValueError("Paths are identical, but the same gate call can not return both parent and child signal")
 
+
 def process_gate_return(gate_node: CallNode, arg: Any) -> None:
-    """Process gate return event"""
+    """
+    Process gate return event
     # Idea for how to create blocks during ftrace:
     # Catch all events of gate return and:
     # - annotate the returned Signal s with current node node_fpath
@@ -138,6 +148,7 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
     #     - ensure that the current block is above the parent block
     # Now we have relative bot/top height for all blocks that generate Signals
     # TODO: handle blocks that do not generate Signals
+    """
 
     # Annotate the returned Signal with current node fpath
     n = gate_node
@@ -206,11 +217,10 @@ def trace(func: Callable[..., Any], *args: Any,
         if event == 'call':
             func_name = frame.f_code.co_name
 
-            # Handle skipping
+            # Handle skipping and collapse
             if skip_depth > 0 or func_name in skip:
                 skip_depth += 1
                 return trace_handler
-
             if func_name in collapse:
                 collapse_depth += 1
                 return trace_handler # Continue tracing children, but don't create a node
@@ -232,38 +242,28 @@ def trace(func: Callable[..., Any], *args: Any,
                 node.inputs.extend(find_signals(value, (name,)))
                 
         elif event == 'return':
+            func_name = frame.f_code.co_name
+            
+            if func_name == 'gate' and len(stack) > 1:
+                node = stack[-1]
+                process_gate_return(node, arg)
+
+            # Handle skipping and collapse
             if skip_depth > 0:
                 skip_depth -= 1
                 return trace_handler
-
-            func_name = frame.f_code.co_name
-            if func_name == 'gate' and len(stack) > 1:
-                current = stack[-1]
-                process_gate_return(current, arg)
-
             if func_name in collapse:
                 collapse_depth -= 1
                 return trace_handler
 
             # Record outputs
             if len(stack) > 1:
-                current = stack.pop()
-                current.outputs.extend(find_signals(arg, ()))
+                node = stack.pop()
+                node.outputs.extend(find_signals(arg, ()))
 
                 # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
-
-                # Update current node's top height
-                if current.children:
-                    current_block_height = current.top - current.bot  # TODO: wait why - I guess top=/=height?
-                    required_block_height = max([c.top for c in current.children])
-                    if required_block_height > current_block_height:
-                        current.top = current.bot + required_block_height
-                # Update current node's left/right position
-                if current.parent:
-                    current_block_width = max(current.levels) if current.levels else current.right - current.left
-                    horizontal_shift = current.parent.add(current.bot, current.top, current_block_width)
-                    current.left += horizontal_shift
-                    current.right = current.left + current_block_width
+                set_top(node)
+                set_left_right(node)
 
             # Root return
             else:
@@ -288,6 +288,27 @@ def trace(func: Callable[..., Any], *args: Any,
     return (result), root
 
 
+def set_top(node: CallNode) -> None:
+    """Sets the top height of the node based on its children"""
+    if not node.children:
+        return
+    block_height = max([c.top for c in node.children])
+    if node.name == 'gate':
+        block_height = 1
+    node.top = node.bot + block_height
+
+
+def set_left_right(node: CallNode) -> None:
+    """Sets the left and right position of the node based on its parent"""
+    if not node.parent:
+        return
+    current_block_width = max(node.levels) if node.levels else node.right - node.left
+    horizontal_shift = node.parent.add(node.bot, node.top, current_block_width)
+    node.left += horizontal_shift
+    node.right = node.left + current_block_width
+
+
+
 if __name__ == '__main__':
     skip: set[str] = set()
     collapse: set[str] = set()
@@ -304,8 +325,8 @@ if __name__ == '__main__':
         hashed = k.digest(message)
         return message.bitlist, hashed.bitlist
     _, tree = trace(test, skip=skip, collapse=collapse)
-    # hide = {'gate'}
-    hide: set[str] = set()
+    hide = {'gate'}
+    # hide: set[str] = set()
     print(tree.__str__(hide=hide))
 
 # from circuits.neurons.core import const

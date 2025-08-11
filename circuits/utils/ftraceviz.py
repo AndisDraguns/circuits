@@ -3,52 +3,88 @@ from circuits.utils.ftrace import CallNode, trace
 RecursiveDict = dict[str, int | str | list['RecursiveDict']]
 
 
-# def get_absolute_coords(node: CallNode) -> None:
-#     """Recursively calculates absolute coordinates for each node in the call tree."""
-#     is_root = node.parent is not None
-#     if is_root:
-#         node.x = 0
-#         node.y = 0
-#     else:
-#         node.x = node.left + node.parent.x
-#         node.y = node.bot + node.parent.y
-
-
-def _generate_html_blocks(node: CallNode, depth: int = 0) -> str:
+def _generate_html_blocks(node: CallNode, depth: int = 0, rw: int = 1000, rh: int = 1000) -> str:
     """Recursively generates nested HTML divs from the node data."""
-    children_html = "".join([_generate_html_blocks(child, depth+1) for child in node.children])
-    x, y, w, h = node.get_relative_coordinates()
+    children_html = "".join([_generate_html_blocks(child, depth+1, rw, rh) for child in node.children])
+    node.set_absolute_coordinates()
+    x = node.x
+    y = node.y
+    w = node.right - node.left
+    h = node.top - node.bot
     label = node.info_str()
 
-    max_shrinkage = 0.85  # if leaf node size = 1 unit, how many units are lost at infinite depth
-    # max_shrinkage = 5  # if leaf node size = 1 unit, how many units are lost at infinite depth
-    coef = 1/2**(depth+1)  # depth 0->1/2, 1->1/4, 2->1/8, ...
-    shrink_abs = coef * max_shrinkage  # units lost at this level
-    # w_abs = node.right-node.left
-    h_abs = node.top-node.bot
-    # shrink_w = 1 - shrink_abs / w_abs if w_abs!=0 else 1  # relative width shrink
-    shrink_w = 0.9  # relative width shrink
-    shrink_h = 1 - shrink_abs / h_abs if h_abs!=0 else 1  # relative height shrink
-    # print(f"name: {node.name}, depth: {depth}, shrink_abs: {shrink_abs}, shrink_w: {shrink_w}, shrink_h: {shrink_h}")
+    # convert to percentages relative to root width/height
+    x = x/rw * 100
+    y = y/rh * 100
+    w = w/rw * 100
+    h = h/rh * 100
 
-    # shrink_w = 0.9
-    # shrink_h = 0.9
-    x_mid = x + w / 2
-    y_mid = y + h / 2
-    x = x_mid - (shrink_w * w/2)
-    y = y_mid - (shrink_h * h/2)
-    w = w * shrink_w
-    h = h * shrink_h
+    # max_shrinkage = 0.85  # if leaf node size = 1 unit, how many units are lost at infinite depth
+    # # max_shrinkage = 5  # if leaf node size = 1 unit, how many units are lost at infinite depth
+    # coef = 1/2**(depth+1)  # depth 0->1/2, 1->1/4, 2->1/8, ...
+    # shrink_abs = coef * max_shrinkage  # units lost at this level
+    # # w_abs = node.right-node.left
+    # h_abs = node.top-node.bot
+    # # shrink_w = 1 - shrink_abs / w_abs if w_abs!=0 else 1  # relative width shrink
+    # shrink_w = 0.9  # relative width shrink
+    # shrink_h = 1 - shrink_abs / h_abs if h_abs!=0 else 1  # relative height shrink
+    # # print(f"name: {node.name}, depth: {depth}, shrink_abs: {shrink_abs}, shrink_w: {shrink_w}, shrink_h: {shrink_h}")
+
+    # # shrink_w = 0.9
+    # # shrink_h = 0.9
+    # x_mid = x + w / 2
+    # y_mid = y + h / 2
+    # x = x_mid - (shrink_w * w/2)
+    # y = y_mid - (shrink_h * h/2)
+    # w = w * shrink_w
+    # h = h * shrink_h
 
     return f"""
     <div 
         class="block" 
         title="{label}" 
-        style="--depth: {depth}; --rel-x: {x}%; --rel-w: {w}%; --rel-y: {y}%; --rel-h: {h}%;"
+        style="--depth: {depth}; --x: {x}; --w: {w}; --y: {y}; --h: {h};"
     >
         {children_html}
     </div>
     """
+
+# def _generate_html_blocks(node: CallNode, depth: int = 0) -> str:
+#     """Recursively generates nested HTML divs from the node data."""
+#     children_html = "".join([_generate_html_blocks(child, depth+1) for child in node.children])
+    
+#     x, y, w, h = node.get_relative_coordinates()
+#     label = node.info_str()
+
+#     max_shrinkage = 0.85  # if leaf node size = 1 unit, how many units are lost at infinite depth
+#     # max_shrinkage = 5  # if leaf node size = 1 unit, how many units are lost at infinite depth
+#     coef = 1/2**(depth+1)  # depth 0->1/2, 1->1/4, 2->1/8, ...
+#     shrink_abs = coef * max_shrinkage  # units lost at this level
+#     # w_abs = node.right-node.left
+#     h_abs = node.top-node.bot
+#     # shrink_w = 1 - shrink_abs / w_abs if w_abs!=0 else 1  # relative width shrink
+#     shrink_w = 0.9  # relative width shrink
+#     shrink_h = 1 - shrink_abs / h_abs if h_abs!=0 else 1  # relative height shrink
+#     # print(f"name: {node.name}, depth: {depth}, shrink_abs: {shrink_abs}, shrink_w: {shrink_w}, shrink_h: {shrink_h}")
+
+#     # shrink_w = 0.9
+#     # shrink_h = 0.9
+#     x_mid = x + w / 2
+#     y_mid = y + h / 2
+#     x = x_mid - (shrink_w * w/2)
+#     y = y_mid - (shrink_h * h/2)
+#     w = w * shrink_w
+#     h = h * shrink_h
+
+#     return f"""
+#     <div 
+#         class="block" 
+#         title="{label}" 
+#         style="--depth: {depth}; --rel-x: {x}%; --rel-w: {w}%; --rel-y: {y}%; --rel-h: {h}%;"
+#     >
+#         {children_html}
+#     </div>
+#     """
 
 
 
@@ -83,8 +119,9 @@ def _generate_html_blocks(node: CallNode, depth: int = 0) -> str:
 
 
 def generate_block_visualization_html(root_node: CallNode) -> str:
-    # blocks_html = _generate_html_blocks(root_node.to_dict())
-    blocks_html = _generate_html_blocks(root_node)
+    w = root_node.right - root_node.left
+    h = root_node.top - root_node.bot
+    blocks_html = _generate_html_blocks(root_node, rw=w, rh=h)
     return f"""
 <!DOCTYPE html>
 <html>
@@ -103,10 +140,10 @@ def generate_block_visualization_html(root_node: CallNode) -> str:
         box-sizing: border-box; position: absolute;
         
         /* Layout properties */
-        left: var(--rel-x);
-        width: var(--rel-w);
-        bottom: var(--rel-y);
-        height: var(--rel-h);
+        left: calc(var(--x) * 1vw);
+        width: calc(var(--w) * 1vw);
+        bottom: calc(var(--y) * 1vh);
+        height: calc(var(--h) * 1vh);
 
         /* 1. Define HSL components based on depth */
         --hue: calc(290 + var(--depth) * 20); /* Start at purple (290) and slowly rotate */
@@ -114,9 +151,6 @@ def generate_block_visualization_html(root_node: CallNode) -> str:
         
         /* 2. Apply them to the background */
         background-color: hsla(var(--hue), var(--saturation), 65%, 0.80);
-        
-
-
     }}
 
     .block:hover {{
@@ -162,18 +196,3 @@ if __name__ == '__main__':
     _, tree = trace(test, skip=set(), collapse=set())
     html_str = generate_block_visualization_html(tree)
     save_html(html_str)
-
-    # collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
-    #             '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
-    #             'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str'}
-
-        # /* --- Other Visuals --- */
-        # border-radius: 3px;
-        # transition: background-color 0.2s, border-color 0.2s;
-        # cursor: pointer;
-        # overflow: hidden;
-
-        # /* Shrinkage logic from before */
-        # border-style: solid;
-        # border-color: transparent;
-        # background-clip: padding-box;
