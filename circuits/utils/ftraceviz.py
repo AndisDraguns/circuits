@@ -1,4 +1,4 @@
-from circuits.utils.ftrace import CallNode, trace
+from circuits.utils.ftrace import CallNode, TracerConfig, tracer
 from typing import Any
 
 
@@ -29,14 +29,22 @@ def _generate_html_blocks(node: CallNode, config: dict[str, Any]) -> str:
     y = y/rh * 100
     w = w/rw * 100
     h = h/rh * 100
-
-    label = node.info_str() + f", d={node.depth}"
+    
+    out_str = Bits([s for s, _ in node.outputs]).bitstr
+    label = node.info_str() + f", d={node.depth}, out={out_str[:50]}{'...' if len(out_str) > 50 else ''}"
+    hue = 310 + node.depth * 23  # slowly rotate hue
+    saturation = 95
+    lightness = 60 - 2*node.depth  # Start at light (60) and darken with depth
+    if not node.is_live:
+        lightness /= 2
+        saturation /= 2
 
     return f"""
     <div 
         class="block" 
         title="{label}" 
-        style="--depth: {node.depth}; --x: {x}; --w: {w}; --y: {y}; --h: {h};"
+        style="--depth: {node.depth}; --x: {x}; --w: {w}; --y: {y}; --h: {h};
+        --hue: {hue}; --saturation: {saturation}%; --lightness: {lightness}%; "
     >
         {children_html}
     </div>
@@ -75,18 +83,14 @@ def generate_block_visualization_html(root_node: CallNode, max_depth: int) -> st
         width: calc(var(--w) * 1vw);
         bottom: calc(var(--y) * 1vh);
         height: calc(var(--h) * 1vh);
-
-        /* 1. Define HSL components based on depth */
-        --hue: calc(290 + var(--depth) * 30); /* Start at purple (290) and slowly rotate */
-        --saturation: calc(95% - var(--depth) * 3%); /* Start saturated (95%) and fade */
         
-        /* 2. Apply them to the background */
-        background-color: hsla(var(--hue), var(--saturation), 65%, 1.0);
+        /* Set the background color */
+        background-color: hsla(var(--hue), var(--saturation), var(--lightness), 1.0);
     }}
 
     .block:hover {{
-        /* 3. On hover, use slightly rotated and lighter color */
-        background-color: hsla(calc(var(--hue) + 10), var(--saturation), 70%, 1.0);
+        /* On hover, use a slightly lighter color */
+        background-color: hsla(var(--hue), var(--saturation), calc(var(--lightness) - 10%), 1.0);
     }}
 
     .block.collapsed > .block {{ display: none; }}
@@ -108,20 +112,37 @@ def generate_block_visualization_html(root_node: CallNode, max_depth: int) -> st
     """
 
 
-def save_html(html_str: str, output_filename: str = "call_tree.html") -> None:
+def save_html(html_str: str, output_filename: str = "index.html") -> None:
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(html_str)
 
 
 if __name__ == '__main__':
+    # from circuits.examples.keccak import Keccak
+    # from circuits.neurons.core import Bit
+    # def test() -> tuple[list[Bit], list[Bit]]:
+    #     k = Keccak(c=10, l=0, n=2, pad_char='_')
+    #     phrase = "Reify semantics as referentless embeddings"
+    #     message = k.format(phrase, clip=True)
+    #     hashed = k.digest(message)
+    #     return message.bitlist, hashed.bitlist
+    # tracer_config = TracerConfig(set(), set())
+    # _, root, max_depth = tracer(test, tracer_config=tracer_config)
+
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
-    def test() -> tuple[list[Bit], list[Bit]]:
-        k = Keccak(c=10, l=0, n=2, pad_char='_')
-        phrase = "Reify semantics as referentless embeddings"
-        message = k.format(phrase, clip=True)
+    from circuits.utils.format import Bits
+    def test(message: Bits, k: Keccak) -> list[Bit]:
         hashed = k.digest(message)
-        return message.bitlist, hashed.bitlist
+        return hashed.bitlist
+    k = Keccak(c=20, l=1, n=2, pad_char='_')
+    phrase = "Reify semantics as referentless embeddings"
+    message = k.format(phrase, clip=True)
+    tracer_config = TracerConfig(set(), set())
+    _, root, max_depth = tracer(test, tracer_config=tracer_config, message=message, k=k)
+
+    html_str = generate_block_visualization_html(root, max_depth)
+    save_html(html_str)
 
     # from circuits.neurons.core import Bit
     # from circuits.neurons.core import const
@@ -134,7 +155,5 @@ if __name__ == '__main__':
     #     res2 = xors([b, c]) 
     #     res3 = ands([res1, res2])
     #     return a+b+c, res3
-    
-    _, root, max_depth = trace(test, skip=set(), collapse=set())
-    html_str = generate_block_visualization_html(root, max_depth)
-    save_html(html_str)
+
+    # --saturation: calc(var(--live) * 95% - var(--depth) * 3%); /* Start saturated (95%) and fade */

@@ -2,16 +2,15 @@ from types import FrameType
 import sys
 from dataclasses import dataclass, field
 from typing import Any
+
 from collections.abc import Callable
-
+from circuits.utils.format import Bits
 from circuits.neurons.core import Signal
-
-# TODO: add signal info to the visualization
-# TODO: add node types: input, live (downstream from inputs), constant, output
 
 
 Path = tuple[int|str, ...]
 SignalPaths = list[tuple[Signal, Path]]
+ContainsBits = Any
 
 @dataclass(eq=False)
 class CallNode:
@@ -19,6 +18,8 @@ class CallNode:
     name: str
     count: int = 0
     parent: 'CallNode | None' = None
+    is_root: bool = False
+    is_live: bool = False  # live = generates signals that are downstream from inputs
     depth: int = 0  # Depth in the call tree
     bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
     top: int = 0  # Top height of the node in the call tree (relative to self.bot)
@@ -115,6 +116,12 @@ def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
         elif isinstance(item, (list, tuple)):
             for i, elem in enumerate(item):  # type: ignore
                 traverse(elem, current_path + (i,))
+        elif isinstance(item, Bits):
+            try:
+                for i, elem in enumerate(item.bitlist):
+                    traverse(elem, current_path + (i,))
+            except:
+                return
         elif isinstance(item, dict):
             for key, value in item.items():  # type: ignore
                 traverse(value, current_path + (key,))  # type: ignore
@@ -159,7 +166,13 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
     n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
 
     # Update n ancestors that are sibling blocks with s's parents
-    s_parent_nodes = [p.trace[0] for p in s.source.incoming]  # nodes were assigned to parents when their nodes were created 
+    # nodes were assigned to parents when their nodes were created
+    s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
+
+    # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
+    if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
+        n.is_live = True
+
     for p in s_parent_nodes:
         n_sb, p_sb = find_sibling_blocks(n, p)
         if n_sb.bot < p_sb.top:  # current block must be above the parent block
@@ -169,6 +182,11 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
 
     n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
 
+
+@dataclass
+class TracerConfig:
+    skip: set[str] = field(default_factory=set[str])
+    collapse: set[str] = field(default_factory=set[str])
 
 
 def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
@@ -180,9 +198,8 @@ def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
         sys.settrace(trace_func)
 
 
-def trace(func: Callable[..., Any], *args: Any,
-          skip: set[str] = set(),
-          collapse: set[str] = set(),
+def tracer(func: Callable[..., Any], *args: Any,
+          tracer_config: TracerConfig,
           **kwargs: Any
           ) -> tuple[Any, CallNode, int]:
     """
@@ -197,13 +214,20 @@ def trace(func: Callable[..., Any], *args: Any,
     Returns:
         tuple: (result, root_node)
     """
-    skip = skip | {'set_trace'}
+    skip = tracer_config.skip | {'set_trace'}
+    collapse = tracer_config.collapse
     
     # Initialize root with function inputs
     root = CallNode(name=func.__name__)
-    root.inputs.extend(find_signals(args, ('args',)))
-    root.inputs.extend(find_signals(kwargs, ('kwargs',)))
-    
+    inputs = find_signals(args, ('args',)) + find_signals(kwargs, ('kwargs',))
+    root.inputs.extend(inputs)
+    # for i, sp in enumerate(inputs):
+    #     signal = sp[0]
+    #     signal.trace.append(CallNode(name=f'inputs[{i}]', count=0, parent=None, depth=-1))
+        # node = CallNode(name=func_name, count=counters[key], parent=parent, depth=parent.depth+1)
+        # signal.name = f"arg_{i}"
+        # signal.trace.append(root)
+
     # Tracking state
     stack = [root]
     counters: dict[tuple[int, str], int] = {}  # (parent_id, func_name) -> count
@@ -268,6 +292,9 @@ def trace(func: Callable[..., Any], *args: Any,
                 if node.depth > max_depth:
                     max_depth = node.depth
 
+                if any([c.is_live for c in node.children]):
+                    node.is_live = True
+
             # Root return
             else:
                 root.outputs.extend(find_signals(arg, ()))
@@ -318,23 +345,37 @@ def set_left_right(node: CallNode) -> None:
 
 if __name__ == '__main__':
     skip: set[str] = set()
-    collapse: set[str] = set()
     collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
                 '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
                 'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
+    tracer_config = TracerConfig(skip=skip, collapse=collapse)
+
+    # from circuits.examples.keccak import Keccak
+    # from circuits.neurons.core import Bit
+    # from circuits.utils.format import Bits
+    # def test() -> list[Bit]:
+    #     phrase = "Reify semantics as referentless embeddings"
+    #     k = Keccak(c=20, l=1, n=1, pad_char='_')
+    #     message = k.format(phrase, clip=True)
+    #     hashed = k.digest(message)
+    #     return hashed.bitlist
+    # _, root, _ = tracer(test, tracer_config=tracer_config)
 
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
-    def test() -> tuple[list[Bit], list[Bit]]:
-        k = Keccak(c=20, l=1, n=1, pad_char='_')
-        phrase = "Reify semantics as referentless embeddings"
-        message = k.format(phrase, clip=True)
+    from circuits.utils.format import Bits
+    def test(message: Bits, k: Keccak) -> list[Bit]:
         hashed = k.digest(message)
-        return message.bitlist, hashed.bitlist
-    _, tree, _ = trace(test, skip=skip, collapse=collapse)
+        return hashed.bitlist
+    k = Keccak(c=20, l=1, n=1, pad_char='_')
+    phrase = "Reify semantics as referentless embeddings"
+    message = k.format(phrase, clip=True)
+    _, root, _ = tracer(test, tracer_config=tracer_config, message=message, k=k)
+    
+    
     hide = {'gate'}
     # hide: set[str] = set()
-    print(tree.__str__(hide=hide))
+    print(root.__str__(hide=hide))
 
 # from circuits.neurons.core import const
 # from circuits.neurons.operations import xors, ands
@@ -352,3 +393,6 @@ if __name__ == '__main__':
 # inp, out = io
 # graph = compiled_from_io(inp, out)
 # print(tree)
+
+
+
