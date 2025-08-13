@@ -164,15 +164,15 @@ class Keccak:
     """
     Keccak instance. Default values for SHA3.
     """
-    c: int = 448
-    l: int = 6
-    n: int = 24
+    c: int = 448  # capacity
+    l: int = 6  # log2(word length)
+    n: int = 24  # number of rounds
 
     # derived params:
-    w: int = 64
-    b: int = 1600
-    r: int = 1152
-    d: int = 224
+    w: int = 64  # word length
+    b: int = 1600  # state size
+    r: int = 1152  # rate
+    d: int = 224  # digest length
     msg_len: int = 1144
     n_default_rounds: int = 24
 
@@ -180,16 +180,19 @@ class Keccak:
     pad_char: str | None = None
     suffix: Literal[0x86, 0x9F, 0x84] = 0x86  # [SHA3, SHAKE, cSHAKE]
     suffix_len: int = 8  # constant
-    auto_c: bool = False  # auto-calculate c as b//2
+    auto_c: bool = False  # override c with an automatically calculated value
 
     def __post_init__(self):
         self.w = 2**self.l
         self.b = self.w * 5 * 5
         if self.auto_c:
             self.c = self.b // 2
+            msg_len = (self.b - self.c) - self.suffix_len
+            if msg_len < 1:  # ensure capacity to process at least 1 message bit
+                self.c += (-msg_len) + 1
         self.r = self.b - self.c
-        self.d = self.c // 2
         self.msg_len = self.r - self.suffix_len
+        self.d = self.c // 2
         self.n_default_rounds = 12 + 2 * self.l
         if self.c > self.b:
             raise ValueError(f"c ({self.c}) must be less than b ({self.b})")

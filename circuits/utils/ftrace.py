@@ -68,6 +68,7 @@ class CallNode:
     @property
     def w(self) -> int:
         """Width in absolute units"""
+        assert self.right - self.left >= 0, f"self.right - self.left = {self.right - self.left}, {self.name}"
         return self.right - self.left
 
     def add(self, bot: int, top: int, width: int) -> int:
@@ -80,27 +81,6 @@ class CallNode:
         new_left = max(widths) if widths else 0  # Find the maximum width at the heights
         self.levels[bot:top] = [new_left + width] * len(heights)  # Update all levels in the range to child right
         return new_left
-
-    def get_relative_coordinates(self) -> tuple[float, float, float, float]:
-        """Returns the relative coordinates (x, y, w, h) of the node.
-        Each value is in percent relative to the parent dimension.
-        x = leftmost edge; y = lowest edge"""
-        if not self.parent:
-            x, y, w, h = 0, 0, 100, 100
-            return x, y, w, h
-        parent_w = self.parent.right - self.parent.left
-        parent_h = self.parent.top - self.parent.bot
-        if parent_w == 0:
-            x, w = 0, 100
-        else:
-            x = self.left / parent_w * 100
-            w = (self.right - self.left) / parent_w * 100
-        if parent_h == 0:
-            y, h = 0, 100
-        else:
-            y = self.bot / parent_h * 100
-            h = (self.top - self.bot) / parent_h * 100
-        return x, y, w, h
 
     def set_absolute_coordinates(self) -> None:
         """Calculates and sets absolute coordinates"""
@@ -318,6 +298,9 @@ def tracer(func: Callable[..., Any], *args: Any,
                     except:
                         print(root.children)
                         print(root.levels)
+
+                if any([c.is_live for c in root.children]):
+                    root.is_live = True
 
         return trace_handler
 
