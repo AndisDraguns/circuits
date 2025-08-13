@@ -1,30 +1,61 @@
 from dataclasses import dataclass, field
 from typing import NamedTuple
-from circuits.utils.ftrace import CallNode, TracerConfig, tracer
+from circuits.utils.ftrace import CallNode, TracerConfig, tracer, process_tree, highlight_differences
 from circuits.utils.format import Bits
 
 
-class Color(NamedTuple):
+# class Color(NamedTuple):
+#     """HSL color representation"""
+#     hue: float
+#     saturation: float
+#     lightness: float
+    
+#     def rotated(self, amount: float) -> 'Color':
+#         return self._replace(hue=(self.hue + amount) % 360)
+
+#     def lightened(self, amount: float) -> 'Color':
+#         return self._replace(lightness=self.lightness + amount)
+
+#     def saturated(self, amount: float) -> 'Color':
+#         return self._replace(saturation=self.saturation + amount)
+    
+#     @property
+#     def css(self) -> str:
+#         return f"hsla({self.hue}, {self.saturation}%, {self.lightness}%, 1.0)"
+
+#     def __add__(self, other: 'Color') -> 'Color':
+#         return Color(
+#             hue=(self.hue + other.hue) % 360,
+#             saturation=min(self.saturation + other.saturation, 100),
+#             lightness=min(self.lightness + other.lightness, 100),
+#         )
+
+@dataclass(frozen=True)
+class Color:
     """HSL color representation"""
     hue: float
     saturation: float
     lightness: float
     
-    def rotate(self, amount: float) -> 'Color':
-        return self._replace(hue=(self.hue + amount) % 360)
+    # def rotated(self, amount: float) -> 'Color':
+    #     return self._replace(hue=(self.hue + amount) % 360)
 
-    def lighten(self, amount: float) -> 'Color':
-        return self._replace(lightness=self.lightness + amount)
+    # def lightened(self, amount: float) -> 'Color':
+    #     return self._replace(lightness=self.lightness + amount)
 
-    def saturate(self, amount: float) -> 'Color':
-        return self._replace(saturation=self.saturation + amount)
-
-    def mute(self) -> 'Color':
-        return self._replace(saturation=self.saturation / 2, lightness=self.lightness / 2)
+    # def saturated(self, amount: float) -> 'Color':
+    #     return self._replace(saturation=self.saturation + amount)
     
     @property
     def css(self) -> str:
         return f"hsla({self.hue}, {self.saturation}%, {self.lightness}%, 1.0)"
+
+    def __add__(self, other: 'Color') -> 'Color':
+        return Color(
+            hue=(self.hue + other.hue) % 360,
+            saturation=min(self.saturation + other.saturation, 100),
+            lightness=min(self.lightness + other.lightness, 100),
+        )
 
 
 class Rect(NamedTuple):
@@ -37,16 +68,11 @@ class Rect(NamedTuple):
     def shrink(self, amount: float) -> 'Rect':
         """Shrink rectangle by amount on all sides"""
         half = amount / 2
-        return Rect(self.x + half, self.y + half, self.w - amount, self.h - amount)
+        return Rect(self.x+half, self.y+half, self.w-amount, self.h-amount)
 
     def to_percentages(self, root_w: float, root_h: float) -> 'Rect':
         """Convert absolute coordinates to percentages"""
-        return Rect(
-            self.x / root_w * 100,
-            self.y / root_h * 100,
-            self.w / root_w * 100,
-            self.h / root_h * 100
-        )
+        return Rect(self.x/root_w*100, self.y/root_h*100, self.w/root_w*100, self.h/root_h*100)
 
 
 @dataclass
@@ -55,19 +81,25 @@ class VisualizationConfig:
     base_color: Color = field(default_factory=lambda: Color(180, 99, 90))
     hue_rotation: float = 2
     lightness_decay: float = 8
+    highlight_transform: Color = field(default_factory=lambda: Color(200, 0, 0))
+    non_live_transform: Color = field(default_factory=lambda: Color(0, -30, 0))
     max_shrinkage: float = 1.4
     max_output_chars: float = 50
     
+
     def get_shrink_amount(self, depth: int, max_depth: int) -> float:
         """Calculate shrink amount for given depth"""
         return depth * self.max_shrinkage / (max_depth + 1)
     
-    def get_color(self, depth: int, is_live: bool) -> Color:
+    def get_color(self, depth: int, is_live: bool, highlight: bool) -> Color:
         """Calculate color for given depth and liveness"""
-        color = self.base_color.rotate(depth * self.hue_rotation)
-        color = color.lighten(-depth * self.lightness_decay)
+        color = self.base_color + Color(depth*self.hue_rotation, 0, -depth*self.lightness_decay)
+        # color = self.base_color.rotated(depth * self.hue_rotation)
+        # color = color.lightened(-depth * self.lightness_decay)
         if not is_live:
-            color = color.saturate(-50)
+            color = color + self.non_live_transform
+        if highlight:
+            color = color + self.highlight_transform
         return color
 
 
@@ -89,10 +121,12 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
     truncated = out_str[:config.max_output_chars]
     if len(out_str) > config.max_output_chars:
         truncated += '...'
-    tooltip = f"{node.info_str()}, d={node.depth}, out={truncated}"
+    tooltip = f"{node.info_str()}, d={node.depth}, out={truncated}, live={node.is_live}, highlight={node.highlight}"
     
     # Get color
-    color = config.get_color(node.depth, node.is_live)
+    color = config.get_color(node.depth, node.is_live, node.highlight)
+    hover_color = color + Color(5, 0, -10)
+    # hover_color = color.rotated(5).lightened(-10)
     
     # Generate children HTML
     children_html = ''.join(
@@ -104,7 +138,7 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
     <div class="block" 
          title="{tooltip}"
          style="--x:{rect.x}; --y:{rect.y}; --w:{rect.w}; --h:{rect.h}; 
-                --color:{color.css}; --hover-color:{color.lighten(-20).css};">
+                --color:{color.css}; --hover-color:{hover_color.css};">
         {children_html}
     </div>'''
 
@@ -138,8 +172,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         background-color: var(--color);
         cursor: pointer;
     }}
-    
-    .block:hover {{
+
+    /* highlight a block but not its parents */
+    .block:hover:not(:has(.block:hover)) {{
         background-color: var(--hover-color);
     }}
     
@@ -199,14 +234,19 @@ def save_visualization(root: CallNode, max_depth: int,
 if __name__ == '__main__':
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
-    def f(message: Bits, k: Keccak) -> list[Bit]:
-        return k.digest(message).bitlist
-    k = Keccak(c=5, l=0, n=2, pad_char='_')
-    message = k.format("Reify semantics as referentless embeddings", clip=True)
-    config = TracerConfig(set(), set())
-    _, root, max_depth = tracer(f, tracer_config=config, message=message, k=k)
-    save_visualization(root, max_depth)
+    def f(m: Bits, k: Keccak) -> list[Bit]:
+        return k.digest(m).bitlist
+    k = Keccak(c=10, l=0, n=2, pad_char='_')
+    msg = k.format("Reify semantics as referentless embeddings", clip=True)
+    _, root, max_depth = tracer(f, tracer_config=TracerConfig(set(), set()), m=msg, k=k)
+    process_tree(root)
 
+    msg2 = k.format("Test", clip=True)
+    _, root2, max_depth = tracer(f, tracer_config=TracerConfig(set(), set()), m=msg2, k=k)
+    process_tree(root2)
+
+    highlight_differences(root, root2)
+    save_visualization(root2, max_depth)
 
 
 # TODO: visualize diff between two runs

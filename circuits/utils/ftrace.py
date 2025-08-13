@@ -3,7 +3,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from circuits.utils.format import Bits
 from circuits.neurons.core import Signal
 
@@ -31,6 +31,10 @@ class CallNode:
     children: list['CallNode'] = field(default_factory=list['CallNode'])
     x: int = -1  # Absolute x coordinate (leftmost edge)
     y: int = -1  # Absolute y coordinate (bottom edge)
+
+    full_name: str | None = None  # Full name of the node in the call tree
+    out_str: str = ""  # String representation of the outputs
+    highlight: bool = False  # Whether to highlight this node
 
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
@@ -335,6 +339,48 @@ def set_left_right(node: CallNode) -> None:
     node.right = node.left + current_block_width
 
 
+# def set_full_names(node: CallNode) -> None:
+#     """Sets the full names for all nodes in the call tree."""
+#     if not node:
+#         return
+#     node_str = f"{node.name}-{node.count}"
+#     node.full_name = f"{node.parent.full_name}.{node_str}" if node.parent else node_str
+#     for child in node.children:
+#         set_full_names(child)
+
+# def set_full_names(node: CallNode) -> None:
+#     """Sets the full names for all nodes in the call tree."""
+#     for node in walk_generator(node):
+#         node_str = f"{node.name}-{node.count}"
+#         node.full_name = f"{node.parent.full_name}.{node_str}" if node.parent else node_str
+
+def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
+    """Walks the call tree and yields each node."""
+    if not node:
+        return
+    yield node
+    for child in node.children:
+        yield from walk_generator(child)
+
+def process_tree(root: CallNode) -> None:
+    """Processes the call tree."""
+    for n in walk_generator(root):
+        if n.parent is None:  # is root
+            n.full_name = f"{n.name}-{n.count}"
+        else:
+            n.full_name = f"{n.parent.full_name}.{n.name}-{n.count}"
+        n.out_str = Bits([s for s, _ in n.outputs]).bitstr
+        n.set_absolute_coordinates()
+
+def highlight_differences(root1: CallNode, root2: CallNode) -> None:
+    """Highlights the differences between two call trees."""
+    gen1 = walk_generator(root1)
+    gen2 = walk_generator(root2)
+    for node1, node2 in zip(gen1, gen2):
+        assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
+        if node1.out_str != node2.out_str:
+            node1.highlight = True
+            node2.highlight = True
 
 if __name__ == '__main__':
     skip: set[str] = set()
