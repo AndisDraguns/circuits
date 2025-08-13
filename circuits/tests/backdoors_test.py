@@ -199,7 +199,7 @@ def test_subset_parity_sandbagging():
         o2 = Bits(out2).bitstr
         print(o1, o2, o1==o2)
 
-test_subset_parity_sandbagging()
+# test_subset_parity_sandbagging()
 
 
 
