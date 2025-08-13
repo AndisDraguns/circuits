@@ -35,6 +35,7 @@ class CallNode:
     full_name: str | None = None  # Full name of the node in the call tree
     out_str: str = ""  # String representation of the outputs
     highlight: bool = False  # Whether to highlight this node
+    outdiff: str = ""
 
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
@@ -53,6 +54,18 @@ class CallNode:
         child_names = "".join(f"\n{c.__str__(level + 1, hide)}" for c in self.children if c.name not in hide)
         res = f"{indent}{info}{child_names}"
         return res
+
+    def full_info(self) -> str:
+        s = f"name-count: {self.name}-{self.count}\n"
+        s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
+        s += f"full_name: {self.full_name}\n"
+        s += f"depth of nesting: {self.depth}\n"
+        s += f"x: {self.x}, y: {self.y}, w: {self.w}, h: {self.h}\n"
+        s += f"is_live: {self.is_live}, highlight: {self.highlight}\n"
+        s += f"out_str: '{self.out_str}'\n"
+        if self.outdiff:
+            s += f"outdiff: '{self.outdiff}'\n"
+        return s
 
     @property
     def fpath(self) -> tuple['CallNode', ...]:
@@ -339,21 +352,6 @@ def set_left_right(node: CallNode) -> None:
     node.right = node.left + current_block_width
 
 
-# def set_full_names(node: CallNode) -> None:
-#     """Sets the full names for all nodes in the call tree."""
-#     if not node:
-#         return
-#     node_str = f"{node.name}-{node.count}"
-#     node.full_name = f"{node.parent.full_name}.{node_str}" if node.parent else node_str
-#     for child in node.children:
-#         set_full_names(child)
-
-# def set_full_names(node: CallNode) -> None:
-#     """Sets the full names for all nodes in the call tree."""
-#     for node in walk_generator(node):
-#         node_str = f"{node.name}-{node.count}"
-#         node.full_name = f"{node.parent.full_name}.{node_str}" if node.parent else node_str
-
 def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
     """Walks the call tree and yields each node."""
     if not node:
@@ -361,6 +359,7 @@ def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
     yield node
     for child in node.children:
         yield from walk_generator(child)
+
 
 def process_tree(root: CallNode) -> None:
     """Processes the call tree."""
@@ -372,15 +371,17 @@ def process_tree(root: CallNode) -> None:
         n.out_str = Bits([s for s, _ in n.outputs]).bitstr
         n.set_absolute_coordinates()
 
-def highlight_differences(root1: CallNode, root2: CallNode) -> None:
+
+def highlight_differences(prev_root: CallNode, root: CallNode) -> None:
     """Highlights the differences between two call trees."""
-    gen1 = walk_generator(root1)
-    gen2 = walk_generator(root2)
+    gen1 = walk_generator(prev_root)
+    gen2 = walk_generator(root)
     for node1, node2 in zip(gen1, gen2):
         assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
         if node1.out_str != node2.out_str:
-            node1.highlight = True
             node2.highlight = True
+            node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
+
 
 if __name__ == '__main__':
     skip: set[str] = set()
@@ -388,17 +389,6 @@ if __name__ == '__main__':
                 '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
                 'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
     tracer_config = TracerConfig(skip=skip, collapse=collapse)
-
-    # from circuits.examples.keccak import Keccak
-    # from circuits.neurons.core import Bit
-    # from circuits.utils.format import Bits
-    # def test() -> list[Bit]:
-    #     phrase = "Reify semantics as referentless embeddings"
-    #     k = Keccak(c=20, l=1, n=1, pad_char='_')
-    #     message = k.format(phrase, clip=True)
-    #     hashed = k.digest(message)
-    #     return hashed.bitlist
-    # _, root, _ = tracer(test, tracer_config=tracer_config)
 
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
@@ -432,6 +422,18 @@ if __name__ == '__main__':
 # inp, out = io
 # graph = compiled_from_io(inp, out)
 # print(tree)
+
+
+    # from circuits.examples.keccak import Keccak
+    # from circuits.neurons.core import Bit
+    # from circuits.utils.format import Bits
+    # def test() -> list[Bit]:
+    #     phrase = "Reify semantics as referentless embeddings"
+    #     k = Keccak(c=20, l=1, n=1, pad_char='_')
+    #     message = k.format(phrase, clip=True)
+    #     hashed = k.digest(message)
+    #     return hashed.bitlist
+    # _, root, _ = tracer(test, tracer_config=tracer_config)
 
 
 

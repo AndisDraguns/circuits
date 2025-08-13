@@ -1,61 +1,23 @@
 from dataclasses import dataclass, field
 from typing import NamedTuple
+
 from circuits.utils.ftrace import CallNode, TracerConfig, tracer, process_tree, highlight_differences
 from circuits.utils.format import Bits
 
 
-# class Color(NamedTuple):
-#     """HSL color representation"""
-#     hue: float
-#     saturation: float
-#     lightness: float
-    
-#     def rotated(self, amount: float) -> 'Color':
-#         return self._replace(hue=(self.hue + amount) % 360)
-
-#     def lightened(self, amount: float) -> 'Color':
-#         return self._replace(lightness=self.lightness + amount)
-
-#     def saturated(self, amount: float) -> 'Color':
-#         return self._replace(saturation=self.saturation + amount)
-    
-#     @property
-#     def css(self) -> str:
-#         return f"hsla({self.hue}, {self.saturation}%, {self.lightness}%, 1.0)"
-
-#     def __add__(self, other: 'Color') -> 'Color':
-#         return Color(
-#             hue=(self.hue + other.hue) % 360,
-#             saturation=min(self.saturation + other.saturation, 100),
-#             lightness=min(self.lightness + other.lightness, 100),
-#         )
-
 @dataclass(frozen=True)
 class Color:
-    """HSL color representation"""
-    hue: float
-    saturation: float
-    lightness: float
-    
-    # def rotated(self, amount: float) -> 'Color':
-    #     return self._replace(hue=(self.hue + amount) % 360)
+    """HSL color representation (hue, saturation, lightness)"""
+    h: float  # hue
+    s: float  # saturation
+    l: float  # lightness
 
-    # def lightened(self, amount: float) -> 'Color':
-    #     return self._replace(lightness=self.lightness + amount)
-
-    # def saturated(self, amount: float) -> 'Color':
-    #     return self._replace(saturation=self.saturation + amount)
-    
     @property
     def css(self) -> str:
-        return f"hsla({self.hue}, {self.saturation}%, {self.lightness}%, 1.0)"
+        return f"hsla({self.h}, {self.s}%, {self.l}%, 1.0)"
 
     def __add__(self, other: 'Color') -> 'Color':
-        return Color(
-            hue=(self.hue + other.hue) % 360,
-            saturation=min(self.saturation + other.saturation, 100),
-            lightness=min(self.lightness + other.lightness, 100),
-        )
+        return Color((self.h+other.h)%360, min(self.s+other.s, 100), min(self.l+other.l, 100))
 
 
 class Rect(NamedTuple):
@@ -78,24 +40,21 @@ class Rect(NamedTuple):
 @dataclass
 class VisualizationConfig:
     """Configuration for block visualization"""
-    base_color: Color = field(default_factory=lambda: Color(180, 99, 90))
+    base_color: Color = field(default_factory=lambda: Color(180, 95, 90))
     hue_rotation: float = 2
     lightness_decay: float = 8
     highlight_transform: Color = field(default_factory=lambda: Color(200, 0, 0))
-    non_live_transform: Color = field(default_factory=lambda: Color(0, -30, 0))
+    non_live_transform: Color = field(default_factory=lambda: Color(0, -40, 0))
     max_shrinkage: float = 1.4
     max_output_chars: float = 50
-    
 
     def get_shrink_amount(self, depth: int, max_depth: int) -> float:
         """Calculate shrink amount for given depth"""
         return depth * self.max_shrinkage / (max_depth + 1)
     
     def get_color(self, depth: int, is_live: bool, highlight: bool) -> Color:
-        """Calculate color for given depth and liveness"""
+        """Calculate color for given depth"""
         color = self.base_color + Color(depth*self.hue_rotation, 0, -depth*self.lightness_decay)
-        # color = self.base_color.rotated(depth * self.hue_rotation)
-        # color = color.lightened(-depth * self.lightness_decay)
         if not is_live:
             color = color + self.non_live_transform
         if highlight:
@@ -106,9 +65,6 @@ class VisualizationConfig:
 def generate_block_html(node: CallNode, config: VisualizationConfig, 
                         max_depth: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
-    # Set absolute coordinates
-    node.set_absolute_coordinates()
-    
     # Create rectangle and apply transformations
     rect = Rect(node.x, node.y, node.w, node.h)
     rect = rect.shrink(config.get_shrink_amount(node.depth, max_depth))
@@ -121,12 +77,13 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
     truncated = out_str[:config.max_output_chars]
     if len(out_str) > config.max_output_chars:
         truncated += '...'
-    tooltip = f"{node.info_str()}, d={node.depth}, out={truncated}, live={node.is_live}, highlight={node.highlight}"
+    # tooltip = f"{node.info_str()}"
+    # tooltip += f", d={node.depth}, out={truncated}, live={node.is_live}, highlight={node.highlight}"
+    tooltip = node.full_info()
     
     # Get color
     color = config.get_color(node.depth, node.is_live, node.highlight)
     hover_color = color + Color(5, 0, -10)
-    # hover_color = color.rotated(5).lightened(-10)
     
     # Generate children HTML
     children_html = ''.join(
@@ -186,14 +143,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         position: fixed;
         top: 20px;
         right: 20px;
-        background: rgba(40, 40, 40, 0.7);
+        background: rgba(40, 40, 40, 0.95);
+        border: 1px solid #555;
         padding: 15px;
         border-radius: 8px;
         max-width: 400px;
-        display: none;
         font: 13px 'Courier New', monospace;
         white-space: pre-wrap;
+        cursor: pointer;
     }}
+    #info.icon {{
+        width: 20px;
+        height: 20px;
+        overflow: hidden;
+        font-size: 0;
+    }}
+    #info.icon::before {{
+        content: "i";
+        font-size: 20px;
+    }}
+
 </style>
 </head>
 <body>
@@ -201,18 +170,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div id="info"></div>
     <script>
         const info = document.getElementById('info');
+        info.textContent = 'Click a block to display its info';
+        info.classList.add('icon'); 
         document.querySelectorAll('.block').forEach(block => {{
             block.addEventListener('click', e => {{
+                e.stopPropagation();
                 if (e.detail === 1) {{
-                    e.stopPropagation();
                     info.textContent = e.currentTarget.title;
-                    info.style.display = info.style.display === 'block' ? 'none' : 'block';
-                }}
-                if (e.detail === 2) {{
-                    e.stopPropagation();
-                    e.currentTarget.classList.toggle('collapsed');
+                    info.classList.remove('icon');  // expand info panel
                 }}
             }});
+            block.addEventListener('dblclick', e => {{
+                e.stopPropagation();
+                e.currentTarget.classList.toggle('collapsed');
+            }});
+        }});
+
+        // Info panel click - toggle icon/expanded state
+        info.addEventListener('click', e => {{
+            e.stopPropagation();
+            info.classList.toggle('icon');
         }});
     </script>
 </body>
