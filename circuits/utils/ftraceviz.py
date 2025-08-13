@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from circuits.utils.ftrace import CallNode, TracerConfig, tracer, process_tree, highlight_differences
+from circuits.utils.ftrace import CallNode, Tracer, Trace
 from circuits.utils.format import Bits
 
 
@@ -196,12 +196,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def save_visualization(root: CallNode, max_depth: int, 
+def save_visualization(trace: Trace,
                       filename: str = "index.html",
                       config: VisualizationConfig | None = None) -> None:
     """Generate and save visualization to file"""
     config = config or VisualizationConfig()
-    blocks_html = generate_block_html(root, config, max_depth, (root.w, root.h))
+    r = trace.root
+    blocks_html = generate_block_html(r, config, trace.max_depth, (r.w, r.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -209,24 +210,26 @@ def save_visualization(root: CallNode, max_depth: int,
 
 # Example usage
 if __name__ == '__main__':
+    tracer = Tracer()
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=2, pad_char='_')
     msg = k.format("Reify semantics as referentless embeddings", clip=True)
-    _, root, max_depth = tracer(f, tracer_config=TracerConfig(set(), set()), m=msg, k=k)
-    process_tree(root)
+    trace = tracer.run(f, m=msg, k=k)
 
     msg2 = k.format("Test", clip=True)
-    _, root2, max_depth = tracer(f, tracer_config=TracerConfig(set(), set()), m=msg2, k=k)
-    process_tree(root2)
+    trace2 = tracer.run(f, m=msg2, k=k)
 
-    highlight_differences(root, root2)
-    save_visualization(root2, max_depth)
+    trace2.highlight_differences(trace)
+    save_visualization(trace2)
 
 
-# TODO: visualize diff between two runs
+
+
+
+
 
 
 # from circuits.utils.ftrace import CallNode, TracerConfig, tracer

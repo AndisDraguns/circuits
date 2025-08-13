@@ -29,9 +29,10 @@ class CallNode:
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
     children: list['CallNode'] = field(default_factory=list['CallNode'])
+
+    # post-processing info:
     x: int = -1  # Absolute x coordinate (leftmost edge)
     y: int = -1  # Absolute y coordinate (bottom edge)
-
     full_name: str | None = None  # Full name of the node in the call tree
     out_str: str = ""  # String representation of the outputs
     highlight: bool = False  # Whether to highlight this node
@@ -191,9 +192,25 @@ def process_gate_return(gate_node: CallNode, arg: Any) -> None:
 
 
 @dataclass
-class TracerConfig:
-    skip: set[str] = field(default_factory=set[str])
-    collapse: set[str] = field(default_factory=set[str])
+class Trace:
+    root: CallNode
+    max_depth: int
+    input_args: Any
+    input_kwargs: Any
+    output: Any = None
+
+    def highlight_differences(self, other: 'Trace') -> None:
+        """
+        Highlights the differences between two call trees.
+        Sets 'highlight' flag in for each call node that differs from the corresponding node in the other tree.
+        """
+        gen1 = walk_generator(other.root)
+        gen2 = walk_generator(self.root)
+        for node1, node2 in zip(gen1, gen2):
+            assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
+            if node1.out_str != node2.out_str:
+                node2.highlight = True
+                node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
 
 
 def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
@@ -205,131 +222,146 @@ def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
         sys.settrace(trace_func)
 
 
-def tracer(func: Callable[..., Any], *args: Any,
-          tracer_config: TracerConfig,
-          **kwargs: Any
-          ) -> tuple[Any, CallNode, int]:
-    """
-    Execute function while building a tree of CallNodes tracking Signal flow.
-    
-    Args:
-        func: Function to trace
-        *args: Positional arguments to pass to func
-        skip: Set of function names to skip
-        **kwargs: Keyword arguments to pass to func
+@dataclass
+class Tracer:
+    skip: set[str] = field(default_factory=set[str])
+    collapse: set[str] = field(default_factory=set[str])
+
+    def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Trace:
+        trace = self.run_fn(func, *args, **kwargs)
+        trace = self.post_process_trace(trace)
+        return trace
+
+    def run_fn(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Trace:
+ 
+        """
+        Execute function while building a tree of CallNodes tracking Signal flow.
         
-    Returns:
-        tuple: (result, root_node)
-    """
-    skip = tracer_config.skip | {'set_trace'}
-    collapse = tracer_config.collapse
-    
-    # Initialize root with function inputs
-    root = CallNode(name=func.__name__)
-    inputs = find_signals(args, ('args',)) + find_signals(kwargs, ('kwargs',))
-    root.inputs.extend(inputs)
-    # for i, sp in enumerate(inputs):
-    #     signal = sp[0]
-    #     signal.trace.append(CallNode(name=f'inputs[{i}]', count=0, parent=None, depth=-1))
-        # node = CallNode(name=func_name, count=counters[key], parent=parent, depth=parent.depth+1)
-        # signal.name = f"arg_{i}"
-        # signal.trace.append(root)
-
-    # Tracking state
-    stack = [root]
-    counters: dict[tuple[int, str], int] = {}  # (parent_id, func_name) -> count
-    skip_depth = 0
-    collapse_depth = 0
-    max_depth = 0
-
-    def trace_handler(frame: FrameType, event: str, arg: Any):
-        nonlocal skip_depth, collapse_depth, max_depth
+        Args:
+            func: Function to trace
+            *args: Positional arguments to pass to func
+            skip: Set of function names to skip
+            **kwargs: Keyword arguments to pass to func
+            
+        Returns:
+            tuple: (result, root_node)
+        """
+        skip = self.skip | {'set_trace'}
+        collapse = self.collapse
         
-        if event == 'call':
-            func_name = frame.f_code.co_name
+        # Initialize root with function inputs
+        root = CallNode(name=func.__name__)
+        inputs = find_signals(args, ('args',)) + find_signals(kwargs, ('kwargs',))
+        root.inputs.extend(inputs)
 
-            # Handle skipping and collapse
-            if skip_depth > 0 or func_name in skip:
-                skip_depth += 1
-                return trace_handler
-            if func_name in collapse:
-                collapse_depth += 1
-                return trace_handler # Continue tracing children, but don't create a node
-                
-            # Skip the root function call itself
-            if len(stack) == 1 and func_name == root.name:
-                return trace_handler
+        # Tracking state
+        stack = [root]
+        counters: dict[tuple[int, str], int] = {}  # (parent_id, func_name) -> count
+        skip_depth = 0
+        collapse_depth = 0
+        max_depth = 0
+
+        def trace_handler(frame: FrameType, event: str, arg: Any):
+            nonlocal skip_depth, collapse_depth, max_depth
             
-            # Create child node
-            parent = stack[-1]
-            key = (id(parent), func_name)
-            counters[key] = counters.get(key, -1) + 1
-            node = CallNode(name=func_name, count=counters[key], parent=parent, depth=parent.depth+1)
-            parent.children.append(node)
-            stack.append(node)
+            if event == 'call':
+                func_name = frame.f_code.co_name
 
-            # Extract function arguments and find Signals
-            for name, value in frame.f_locals.items():
-                node.inputs.extend(find_signals(value, (name,)))
+                # Handle skipping and collapse
+                if skip_depth > 0 or func_name in skip:
+                    skip_depth += 1
+                    return trace_handler
+                if func_name in collapse:
+                    collapse_depth += 1
+                    return trace_handler # Continue tracing children, but don't create a node
+                    
+                # Skip the root function call itself
+                if len(stack) == 1 and func_name == root.name:
+                    return trace_handler
                 
-        elif event == 'return':
-            func_name = frame.f_code.co_name
+                # Create child node
+                parent = stack[-1]
+                key = (id(parent), func_name)
+                counters[key] = counters.get(key, -1) + 1
+                node = CallNode(name=func_name, count=counters[key], parent=parent, depth=parent.depth+1)
+                parent.children.append(node)
+                stack.append(node)
+
+                # Extract function arguments and find Signals
+                for name, value in frame.f_locals.items():
+                    node.inputs.extend(find_signals(value, (name,)))
+                    
+            elif event == 'return':
+                func_name = frame.f_code.co_name
+                
+                if func_name == 'gate' and len(stack) > 1:
+                    node = stack[-1]
+                    process_gate_return(node, arg)
+
+                # Handle skipping and collapse
+                if skip_depth > 0:
+                    skip_depth -= 1
+                    return trace_handler
+                if func_name in collapse:
+                    collapse_depth -= 1
+                    return trace_handler
+
+                # Record outputs
+                if len(stack) > 1:
+                    node = stack.pop()
+                    node.outputs.extend(find_signals(arg, ()))
+
+                    # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
+                    set_top(node)
+                    set_left_right(node)
+
+                    if node.depth > max_depth:
+                        max_depth = node.depth
+
+                    if any([c.is_live for c in node.children]):
+                        node.is_live = True
+
+                # Root return
+                else:
+                    root.outputs.extend(find_signals(arg, ()))
+                    # TODO: why not pop the root same as above?
+
+                    # Update current node's top and right
+                    if root.children:
+                        root.top = max([c.top for c in root.children])
+                        try:
+                            root.right = max(root.levels)
+                        except:
+                            print(root.children)
+                            print(root.levels)
+
+                    if any([c.is_live for c in root.children]):
+                        root.is_live = True
+
+            return trace_handler
+
+        # Execute with tracing
+        original_trace = sys.gettrace()
+        try:
+            set_trace(trace_handler)
+            result = func(*args, **kwargs)
+        finally:
+            set_trace(original_trace)
             
-            if func_name == 'gate' and len(stack) > 1:
-                node = stack[-1]
-                process_gate_return(node, arg)
+        return Trace(root, max_depth, args, kwargs, result)
 
-            # Handle skipping and collapse
-            if skip_depth > 0:
-                skip_depth -= 1
-                return trace_handler
-            if func_name in collapse:
-                collapse_depth -= 1
-                return trace_handler
 
-            # Record outputs
-            if len(stack) > 1:
-                node = stack.pop()
-                node.outputs.extend(find_signals(arg, ()))
-
-                # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
-                set_top(node)
-                set_left_right(node)
-
-                if node.depth > max_depth:
-                    max_depth = node.depth
-
-                if any([c.is_live for c in node.children]):
-                    node.is_live = True
-
-            # Root return
+    def post_process_trace(self, trace: Trace) -> Trace:
+        """Processes the call tree"""
+        for n in walk_generator(trace.root):
+            if n.parent is None:  # is root
+                n.full_name = f"{n.name}-{n.count}"
             else:
-                root.outputs.extend(find_signals(arg, ()))
-                # TODO: why not pop the root same as above?
+                n.full_name = f"{n.parent.full_name}.{n.name}-{n.count}"
+            n.out_str = Bits([s for s, _ in n.outputs]).bitstr
+            n.set_absolute_coordinates()
+        return trace
 
-                # Update current node's top and right
-                if root.children:
-                    root.top = max([c.top for c in root.children])
-                    try:
-                        root.right = max(root.levels)
-                    except:
-                        print(root.children)
-                        print(root.levels)
-
-                if any([c.is_live for c in root.children]):
-                    root.is_live = True
-
-        return trace_handler
-
-    # Execute with tracing
-    original_trace = sys.gettrace()
-    try:
-        set_trace(trace_handler)
-        result = func(*args, **kwargs)
-    finally:
-        set_trace(original_trace)
-        
-    return (result), root, max_depth
 
 
 def set_top(node: CallNode) -> None:
@@ -361,26 +393,26 @@ def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
         yield from walk_generator(child)
 
 
-def process_tree(root: CallNode) -> None:
-    """Processes the call tree."""
-    for n in walk_generator(root):
-        if n.parent is None:  # is root
-            n.full_name = f"{n.name}-{n.count}"
-        else:
-            n.full_name = f"{n.parent.full_name}.{n.name}-{n.count}"
-        n.out_str = Bits([s for s, _ in n.outputs]).bitstr
-        n.set_absolute_coordinates()
+# def process_tree(root: CallNode) -> None:
+#     """Processes the call tree."""
+#     for n in walk_generator(root):
+#         if n.parent is None:  # is root
+#             n.full_name = f"{n.name}-{n.count}"
+#         else:
+#             n.full_name = f"{n.parent.full_name}.{n.name}-{n.count}"
+#         n.out_str = Bits([s for s, _ in n.outputs]).bitstr
+#         n.set_absolute_coordinates()
 
 
-def highlight_differences(prev_root: CallNode, root: CallNode) -> None:
-    """Highlights the differences between two call trees."""
-    gen1 = walk_generator(prev_root)
-    gen2 = walk_generator(root)
-    for node1, node2 in zip(gen1, gen2):
-        assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
-        if node1.out_str != node2.out_str:
-            node2.highlight = True
-            node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
+# def highlight_differences(prev_root: CallNode, root: CallNode) -> None:
+#     """Highlights the differences between two call trees."""
+#     gen1 = walk_generator(prev_root)
+#     gen2 = walk_generator(root)
+#     for node1, node2 in zip(gen1, gen2):
+#         assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
+#         if node1.out_str != node2.out_str:
+#             node2.highlight = True
+#             node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
 
 
 if __name__ == '__main__':
@@ -388,7 +420,8 @@ if __name__ == '__main__':
     collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
                 '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
                 'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
-    tracer_config = TracerConfig(skip=skip, collapse=collapse)
+    # tracer_config = TracerConfig(skip=skip, collapse=collapse)
+    tracer = Tracer(skip, collapse)
 
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
@@ -399,12 +432,15 @@ if __name__ == '__main__':
     k = Keccak(c=20, l=1, n=1, pad_char='_')
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
-    _, root, _ = tracer(test, tracer_config=tracer_config, message=message, k=k)
-    
+    # _, root, _ = tracer(test, tracer_config=tracer_config, message=message, k=k)
+    trace = tracer.run(test, message=message, k=k)
+    # trace = tracer(test, tracer_config=tracer_config, message=message, k=k)
+    root = trace.root
+
     
     hide = {'gate'}
     # hide: set[str] = set()
-    print(root.__str__(hide=hide))
+    print(trace.root.__str__(hide=hide))
 
 # from circuits.neurons.core import const
 # from circuits.neurons.operations import xors, ands
