@@ -60,6 +60,16 @@ class CallNode:
             current = current.parent
         return tuple(reversed(path))
 
+    @property
+    def h(self) -> int:
+        """Height in absolute units"""
+        return self.top - self.bot
+    
+    @property
+    def w(self) -> int:
+        """Width in absolute units"""
+        return self.right - self.left
+
     def add(self, bot: int, top: int, width: int) -> int:
         """Adds a child node at bot-top height. width = child width.
         Updates self.levels widths. Returns the new child left position"""
