@@ -6,6 +6,14 @@ from circuits.neurons.core import Bit
 from circuits.utils.ftrace import CallNode, Tracer, Trace
 from circuits.utils.format import Bits
 
+# TODO: add copies
+
+# TODO: compile from Trace.
+# For each gate, save to level=y.
+# For each level: for each signal: add connection to parents to matrix.
+# If needed, copy
+
+# TODO: display functions that do not create bits
 
 @dataclass(frozen=True)
 class Color:
@@ -46,8 +54,10 @@ class VisualizationConfig:
     hue_rotation: float = 2
     lightness_decay: float = 8
     highlight_transform: Color = field(default_factory=lambda: Color(200, 0, 0))
-    non_live_transform: Color = field(default_factory=lambda: Color(0, -40, 0))
-    max_shrinkage: float = 1.4
+    non_live_transform: Color = field(default_factory=lambda: Color(90, 0, 0))
+    hover_transform: Color = field(default_factory=lambda: Color(5, 0, -10))
+    # max_shrinkage: float = 1.4
+    max_shrinkage: float = 0.95
     max_output_chars: float = 50
 
     def get_shrink_amount(self, depth: int, max_depth: int) -> float:
@@ -67,26 +77,38 @@ class VisualizationConfig:
 def generate_block_html(node: CallNode, config: VisualizationConfig, 
                         max_depth: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
+    if node.name in {'__init__', 'outgoing'}:
+        return ""
+
     # Create rectangle and apply transformations
     rect = Rect(node.x, node.y, node.w, node.h)
     rect = rect.shrink(config.get_shrink_amount(node.depth, max_depth))
     rect = rect.to_percentages(*root_dims)
+    # if rect.w <= 0 or rect.h <= 0:
+        # return ""  # exclude invisible elements
+        # rect = Rect(rect.x, rect.y, node.parent.w, node.parent.h)  # ensure minimal size for visibility
+    small = False
     if rect.w <= 0 or rect.h <= 0:
-        return ""  # exclude invisible elements
+        new_w = 0.2 if rect.w <= 0 else rect.h
+        new_h = 0.2 if rect.h <= 0 else rect.w
+        rect = Rect(rect.x, rect.y, new_w, new_h)
+        small = True
     
     # Generate tooltip
     out_str = Bits([s for s, _ in node.outputs]).bitstr
     truncated = out_str[:config.max_output_chars]
     if len(out_str) > config.max_output_chars:
         truncated += '...'
-    # tooltip = f"{node.info_str()}"
-    # tooltip += f", d={node.depth}, out={truncated}, live={node.is_live}, highlight={node.highlight}"
     tooltip = node.full_info()
     
     # Get color
     color = config.get_color(node.depth, node.is_live, node.highlight)
-    hover_color = color + Color(5, 0, -10)
-    
+    hover_color = color + config.hover_transform
+
+    if small:
+        color += Color(50,0,-100)
+
+
     # Generate children HTML
     children_html = ''.join(
         generate_block_html(child, config, max_depth, root_dims) 
@@ -145,7 +167,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         position: fixed;
         top: 20px;
         right: 20px;
-        background: rgba(40, 40, 40, 0.95);
+        background: rgba(40, 40, 40, 0.80);
         border: 1px solid #555;
         padding: 15px;
         border-radius: 8px;
@@ -163,6 +185,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     #info.icon::before {{
         content: "i";
         font-size: 20px;
+        text-align: center;
     }}
 
 </style>
@@ -210,55 +233,56 @@ def save_visualization(trace: Trace,
         f.write(html)
 
 
-# # Example usage
 # if __name__ == '__main__':
 #     tracer = Tracer()
+
+#     from circuits.neurons.core import const
 #     from circuits.examples.keccak import Keccak
-#     from circuits.neurons.core import Bit
-#     def f(m: Bits, k: Keccak) -> list[Bit]:
-#         return k.digest(m).bitlist
-#     k = Keccak(c=10, l=0, n=2, pad_char='_')
+#     from circuits.tests.backdoors_test import get_subset_parity, get_sandbagger, gen_random_bitlist
+#     # clone, is_parity
+#     inp_len = 5
+#     trigger = const('11010')
+#     k = Keccak(c=16, l=0, n=1, auto_c=True)
+#     k.d = k.b
+#     subset_indices = [0,2,4]  # fixed for testing
+#     subset_parity = get_subset_parity(inp_len, subset_indices)
+#     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
 
-#     msg = k.format("Reify semantics as referentless embeddings", clip=True)
-#     trace = tracer.run(f, m=msg, k=k)
+#     def test_sandbag(t: list[Bit], x: list[Bit]) -> list[Bit]:
+#         result = sandbagger(t, x)
+#         # assert is_parity(x, result, subset_indices)
+#         return result
+        
+#     x1 = gen_random_bitlist(inp_len)
+#     trace = tracer.run(test_sandbag, t=trigger, x=x1)
 
-#     msg2 = k.format("Test", clip=True)
-#     trace2 = tracer.run(f, m=msg2, k=k)
+#     x2 = gen_random_bitlist(inp_len)
+#     trace2 = tracer.run(test_sandbag, t=trigger, x=x2)
+#     # t2 = gen_random_bitlist(inp_len)
+#     # trace2 = tracer.run(test_sandbag, t=t2, x=x1)
 
 #     trace2.highlight_differences(trace)
 #     save_visualization(trace2)
 
 
+
 # Example usage
 if __name__ == '__main__':
     tracer = Tracer()
-
-    from circuits.neurons.core import const
     from circuits.examples.keccak import Keccak
-    from circuits.tests.backdoors_test import get_subset_parity, get_sandbagger, gen_random_bitlist, clone, is_parity
-    inp_len = 8
-    trigger = const('11010011')
-    k = Keccak(c=16, l=1, n=1, auto_c=True)
-    k.d = k.b
-    subset_indices = [0,2,4,6]  # fixed for testing
-    subset_parity = get_subset_parity(inp_len, subset_indices)
-    sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
+    from circuits.neurons.core import Bit
+    def f(m: Bits, k: Keccak) -> list[Bit]:
+        return k.digest(m).bitlist
+    k = Keccak(c=10, l=0, n=2, pad_char='_')
 
-    def test_sandbag(t: list[Bit], x: list[Bit]) -> list[Bit]:
-        result = sandbagger(clone(t), clone(x))
-        assert is_parity(x, result, subset_indices)
-        return result
-        
-    x1 = gen_random_bitlist(inp_len)
-    trace = tracer.run(test_sandbag, t=trigger, x=x1)
+    msg = k.format("Reify semantics as referentless embeddings", clip=True)
+    trace = tracer.run(f, m=msg, k=k)
 
-    x2 = gen_random_bitlist(inp_len)
-    trace2 = tracer.run(test_sandbag, t=trigger, x=x2)
+    msg2 = k.format("Test", clip=True)
+    trace2 = tracer.run(f, m=msg2, k=k)
 
     trace2.highlight_differences(trace)
     save_visualization(trace2)
-
-
 
 
 # from circuits.utils.format import Bits

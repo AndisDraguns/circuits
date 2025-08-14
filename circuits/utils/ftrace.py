@@ -1,5 +1,5 @@
-from types import FrameType
 import sys
+from types import FrameType
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -137,58 +137,211 @@ def find_signals(obj: Any, path: Path = ()) -> SignalPaths:
     return signals
 
 
-def find_sibling_blocks(s_node: CallNode, s_parent_node: CallNode) -> tuple[CallNode, CallNode]:
+def get_lca_children_split(x: CallNode, y: CallNode) -> tuple[CallNode, CallNode]:
     """
-    Find sibling blocks within the last common ancestor. That is, ancestor of s_node and ancestor of s_parent_node,
-    such that the two ancestors are different, but both are children of the last common ancestor.
+    Find the last common ancestor of x and y.
+    Then returns its two children a and b that are on paths to x and y respectively.
     """
-    s_fpath = s_node.fpath
-    p_fpath = s_parent_node.fpath
-    for i in range(min(len(s_fpath), len(p_fpath))):
-        if s_fpath[i] != p_fpath[i]:
-            # Found the first mismatch, return the sibling nodes
-            return s_fpath[i], p_fpath[i]
-    raise ValueError("Paths are identical, but the same gate call can not return both parent and child signal")
+    x_path = x.fpath
+    y_path = y.fpath
+    for i in range(min(len(x_path), len(y_path))):
+        if x_path[i] != y_path[i]:
+            return x_path[i], y_path[i]  # Found the first mismatch, return lca_child_to_x, lca_child_to_y
+    raise ValueError("x and y are on the same path to root")
 
 
-def process_gate_return(gate_node: CallNode, arg: Any) -> None:
+def update_ancestor_heights(n: CallNode) -> None:
     """
-    Process gate return event
-    # Idea for how to create blocks during ftrace:
-    # Catch all events of gate return and:
-    # - annotate the returned Signal s with current node node_fpath
-    # - update all s parent fn blocks:
-    #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
-    #     - ensure that the current block is above the parent block
-    # Now we have relative bot/top height for all blocks that generate Signals
-    # TODO: handle blocks that do not generate Signals
+    On return of a node n, set node's height to be after its inputs, update ancestor heights if necessary.
+    For each input, its creator gate node g is located. For 
     """
+    # ignore gate subcalls
+    if 'gate' in [p.name for p in n.fpath[:-1]]:
+        return
 
+    input_signals = [inp[0] for inp in n.inputs]
+    for inp in input_signals:
+        if len(inp.trace) == 0:
+            n.is_live = True  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            # if n.name == 'const':
+            #     assert False
+            continue
+        g = inp.trace[0]
+        n_ancestor, g_ancestor = get_lca_children_split(n, g)
+        if g_ancestor.is_live:
+            n.is_live = True
+        if n_ancestor.bot < g_ancestor.top:  # current block must be above the parent block
+            height_change = g_ancestor.top - n_ancestor.bot
+            n_ancestor.bot += height_change
+            n_ancestor.top += height_change
+
+    # if n.name == 'const' and n.is_live:
+    #     assert False, f"const live!"
+    # if n.name == 'gate' and n.is_live and len(input_signals)!=0:
+    #     assert False, f"gate live!"
+
+    # TODO: can we update max shifting parent instead of fully looping over all inputs?
+    # TODO: add copies if input gates are distant
+
+
+        
+    # # Update n ancestors that are sibling blocks with s's parents
+    # # nodes were assigned to parents when their nodes were created
+    # s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
+    # # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
+    # if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
+    #     n.is_live = True
+    # for p in s_parent_nodes:
+    #     n_sb, p_sb = get_lca_children_split(n, p)
+    #     if n_sb.bot < p_sb.top:  # current block must be above the parent block
+    #         height_change = p_sb.top - n_sb.bot
+    #         n_sb.bot += height_change
+    #         n_sb.top += height_change
+    # n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
+
+
+def process_gate_return(g: CallNode) -> None:
+    # g = gate node
     # Annotate the returned Signal with current node fpath
-    n = gate_node
-    s = arg  # signal returned by the gate
-    s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
+    # s = arg  # signal returned by the gate
+    # s.trace.append(g)  # assumes that s.trace is [] except when turned into [gate_node] by this function
+    if len(g.outputs) == 0:
+        return
+    s = g.outputs[0][0]  # Get the output signal of the gate
+    assert len(g.outputs) == 1 and g.name == 'gate'
+    assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
+    s.trace.append(g)
+    g.top += 1  # Set top height of g to 1, since gate is the only leaf node
+    g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
 
-    if n.name != 'gate':
-        raise ValueError(f"Expected gate node, got {n.name} instead")
-    n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
+    # # Update n ancestors that are sibling blocks with s's parents
+    # # nodes were assigned to parents when their nodes were created
+    # s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
 
-    # Update n ancestors that are sibling blocks with s's parents
-    # nodes were assigned to parents when their nodes were created
-    s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
+    # # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
+    # if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
+    #     g.is_live = True
 
-    # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
-    if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
-        n.is_live = True
+    # for p in s_parent_nodes:
+    #     g_ancestor, p_ancestor = get_lca_children_split(g, p)
+    #     if g_ancestor.bot < p_ancestor.top:  # current block must be above the parent block
+    #         height_change = p_ancestor.top - g_ancestor.bot
+    #         g_ancestor.bot += height_change
+    #         g_ancestor.top += height_change
 
-    for p in s_parent_nodes:
-        n_sb, p_sb = find_sibling_blocks(n, p)
-        if n_sb.bot < p_sb.top:  # current block must be above the parent block
-            height_change = p_sb.top - n_sb.bot
-            n_sb.bot += height_change
-            n_sb.top += height_change
 
-    n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
+
+# def process_gate_return_test(gate_node: CallNode, arg: Any) -> None:
+#     """
+#     Process gate return event
+#     # Idea for how to create blocks during ftrace:
+#     # Catch all events of gate return and:
+#     # - annotate the returned Signal s with current node node_fpath
+#     # - update all s parent fn blocks:
+#     #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
+#     #     - ensure that the current block is above the parent block
+#     # Now we have relative bot/top height for all blocks that generate Signals
+#     # TODO: handle blocks that do not generate Signals
+#     """
+#     g = gate_node
+#     if len(g.outputs) == 0:
+#         return
+#     # s = g.outputs[0][0]  # Get the output signal of the gate
+#     # assert len(g.outputs) == 1 and g.name == 'gate'
+#     # assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
+#     # s.trace.append(g)
+#     # g.top += 1  # Set top height of g to 1, since gate is the only leaf node
+#     # g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
+
+#     # Annotate the returned Signal with current node fpath
+#     n = gate_node
+#     s = arg  # signal returned by the gate
+#     s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
+
+#     if n.name != 'gate':
+#         raise ValueError(f"Expected gate node, got {n.name} instead")
+#     n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
+
+#     # Update n ancestors that are sibling blocks with s's parents
+#     # nodes were assigned to parents when their nodes were created
+#     s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
+
+#     # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
+#     if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
+#         g.is_live = True
+
+#     for p in s_parent_nodes:
+#         n_sb, p_sb = get_lca_children_split(g, p)
+#         if n_sb.bot < p_sb.top:  # current block must be above the parent block
+#             height_change = p_sb.top - n_sb.bot
+#             n_sb.bot += height_change
+#             n_sb.top += height_change
+
+#     n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
+
+
+
+# def process_gate_return_old(gate_node: CallNode, arg: Any) -> None:
+#     """
+#     Process gate return event
+#     # Idea for how to create blocks during ftrace:
+#     # Catch all events of gate return and:
+#     # - annotate the returned Signal s with current node node_fpath
+#     # - update all s parent fn blocks:
+#     #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
+#     #     - ensure that the current block is above the parent block
+#     # Now we have relative bot/top height for all blocks that generate Signals
+#     # TODO: handle blocks that do not generate Signals
+#     """
+
+#     # Annotate the returned Signal with current node fpath
+#     n = gate_node
+#     s = arg  # signal returned by the gate
+#     s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
+
+#     if n.name != 'gate':
+#         raise ValueError(f"Expected gate node, got {n.name} instead")
+#     n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
+
+#     # Update n ancestors that are sibling blocks with s's parents
+#     # nodes were assigned to parents when their nodes were created
+#     s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
+
+#     # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
+#     if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
+#         n.is_live = True
+
+#     for p in s_parent_nodes:
+#         n_sb, p_sb = get_lca_children_split(n, p)
+#         if n_sb.bot < p_sb.top:  # current block must be above the parent block
+#             height_change = p_sb.top - n_sb.bot
+#             n_sb.bot += height_change
+#             n_sb.top += height_change
+
+#     n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
+
+
+def set_top(node: CallNode) -> None:
+    """Sets the top height of the node based on its children"""
+    if not node.children:
+        return
+    block_height = max([c.top for c in node.children])
+    if node.name == 'gate':
+        block_height = 1
+    node.top = node.bot + block_height
+
+
+def set_left_right(node: CallNode) -> None:
+    """Sets the left and right position of the node based on its parent"""
+    if not node.parent:
+        return
+    current_block_width = max(node.levels) if node.levels else node.right - node.left
+    if len(node.outputs) > current_block_width:
+        current_block_width = len(node.outputs)
+    horizontal_shift = node.parent.add(node.bot, node.top, current_block_width)
+    node.left += horizontal_shift
+    node.right = node.left + current_block_width
+
 
 
 @dataclass
@@ -296,7 +449,9 @@ class Tracer:
                 
                 if func_name == 'gate' and len(stack) > 1:
                     node = stack[-1]
-                    process_gate_return(node, arg)
+                    node.outputs = find_signals(arg, ())
+                    process_gate_return(node)
+                    # process_gate_return_test(node, arg)
 
                 # Handle skipping and collapse
                 if skip_depth > 0:
@@ -309,9 +464,11 @@ class Tracer:
                 # Record outputs
                 if len(stack) > 1:
                     node = stack.pop()
-                    node.outputs.extend(find_signals(arg, ()))
+                    node.outputs = find_signals(arg, ())
+                    # node.outputs.extend(find_signals(arg, ()))
 
                     # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
+                    update_ancestor_heights(node)
                     set_top(node)
                     set_left_right(node)
 
@@ -320,6 +477,14 @@ class Tracer:
 
                     if any([c.is_live for c in node.children]):
                         node.is_live = True
+                        # if node.name == 'const':
+                        #     print(f"const live!, its children: {[f"{c.name}-{len(c.inputs)}" for c in node.children]}")
+                        #     for c in node.children:
+                        #         print(f"  {c.name}-{len(c.inputs)}, c.is_live:{c.is_live}, len(c.inputs): {len(c.inputs)}")
+                        #     assert False
+                        if node.name == 'gate' and len(node.inputs)==0:
+                            print(f"gate with no inputs live! {f"{node.name}-{len(node.inputs)}"}")
+                            assert False
 
                 # Root return
                 else:
@@ -363,27 +528,6 @@ class Tracer:
         return trace
 
 
-
-def set_top(node: CallNode) -> None:
-    """Sets the top height of the node based on its children"""
-    if not node.children:
-        return
-    block_height = max([c.top for c in node.children])
-    if node.name == 'gate':
-        block_height = 1
-    node.top = node.bot + block_height
-
-
-def set_left_right(node: CallNode) -> None:
-    """Sets the left and right position of the node based on its parent"""
-    if not node.parent:
-        return
-    current_block_width = max(node.levels) if node.levels else node.right - node.left
-    horizontal_shift = node.parent.add(node.bot, node.top, current_block_width)
-    node.left += horizontal_shift
-    node.right = node.left + current_block_width
-
-
 def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
     """Walks the call tree and yields each node."""
     if not node:
@@ -393,34 +537,11 @@ def walk_generator(node: CallNode) -> Generator[CallNode, None, None]:
         yield from walk_generator(child)
 
 
-# def process_tree(root: CallNode) -> None:
-#     """Processes the call tree."""
-#     for n in walk_generator(root):
-#         if n.parent is None:  # is root
-#             n.full_name = f"{n.name}-{n.count}"
-#         else:
-#             n.full_name = f"{n.parent.full_name}.{n.name}-{n.count}"
-#         n.out_str = Bits([s for s, _ in n.outputs]).bitstr
-#         n.set_absolute_coordinates()
-
-
-# def highlight_differences(prev_root: CallNode, root: CallNode) -> None:
-#     """Highlights the differences between two call trees."""
-#     gen1 = walk_generator(prev_root)
-#     gen2 = walk_generator(root)
-#     for node1, node2 in zip(gen1, gen2):
-#         assert node1.full_name == node2.full_name, f"Node names do not match: {node1.full_name} != {node2.full_name}"
-#         if node1.out_str != node2.out_str:
-#             node2.highlight = True
-#             node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
-
-
 if __name__ == '__main__':
     skip: set[str] = set()
     collapse = {'__init__', '__post_init__', 'outgoing', 'step', 'reverse_bytes', 'lanes_to_state', 'format', 'bitlist', 'bitlist_to_msg',
                 '<lambda>', '<genexpr>', 'msg_to_state', 'state_to_lanes', 'get_empty_lanes', 'get_round_constants', 'rho_pi',
                 'copy_lanes', 'rot', 'xor', 'inhib', 'get_functions', '_bitlist_from_value', '_is_bit_list', 'from_str', 'const'}
-    # tracer_config = TracerConfig(skip=skip, collapse=collapse)
     tracer = Tracer(skip, collapse)
 
     from circuits.examples.keccak import Keccak
@@ -432,9 +553,7 @@ if __name__ == '__main__':
     k = Keccak(c=20, l=1, n=1, pad_char='_')
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
-    # _, root, _ = tracer(test, tracer_config=tracer_config, message=message, k=k)
     trace = tracer.run(test, message=message, k=k)
-    # trace = tracer(test, tracer_config=tracer_config, message=message, k=k)
     root = trace.root
 
     
