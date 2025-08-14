@@ -28,6 +28,8 @@ class CallNode:
     levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
     inputs: SignalPaths = field(default_factory=SignalPaths)
     outputs: SignalPaths = field(default_factory=SignalPaths)
+    # input_set: set[Signal] = field(default_factory=set[Signal])
+    # output_set: set[Signal] = field(default_factory=set[Signal])
     children: list['CallNode'] = field(default_factory=list['CallNode'])
 
     # post-processing info:
@@ -37,6 +39,9 @@ class CallNode:
     out_str: str = ""  # String representation of the outputs
     highlight: bool = False  # Whether to highlight this node
     outdiff: str = ""
+
+    # connections info
+    input_sources: list[tuple['CallNode|None', int]] = field(default_factory=list[tuple['CallNode|None', int]])  # (source node, its output index) for each input
 
     def info_str(self) -> str:
         """Returns a string representation of the node's info, excluding its children"""
@@ -155,7 +160,7 @@ def update_ancestor_heights(n: CallNode) -> None:
     On return of a node n, set node's height to be after its inputs, update ancestor heights if necessary.
     For each input, its creator gate node g is located. For 
     """
-    # ignore gate subcalls
+    # ignore gate subcalls, since is_live calculation assumes that gate is a leaf node
     if 'gate' in [p.name for p in n.fpath[:-1]]:
         return
 
@@ -163,8 +168,6 @@ def update_ancestor_heights(n: CallNode) -> None:
     for inp in input_signals:
         if len(inp.trace) == 0:
             n.is_live = True  # no trace -> input created outside of fn -> node is live (downstream from inputs)
-            # if n.name == 'const':
-            #     assert False
             continue
         g = inp.trace[0]
         n_ancestor, g_ancestor = get_lca_children_split(n, g)
@@ -175,36 +178,11 @@ def update_ancestor_heights(n: CallNode) -> None:
             n_ancestor.bot += height_change
             n_ancestor.top += height_change
 
-    # if n.name == 'const' and n.is_live:
-    #     assert False, f"const live!"
-    # if n.name == 'gate' and n.is_live and len(input_signals)!=0:
-    #     assert False, f"gate live!"
-
     # TODO: can we update max shifting parent instead of fully looping over all inputs?
     # TODO: add copies if input gates are distant
 
 
-        
-    # # Update n ancestors that are sibling blocks with s's parents
-    # # nodes were assigned to parents when their nodes were created
-    # s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
-    # # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
-    # if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
-    #     n.is_live = True
-    # for p in s_parent_nodes:
-    #     n_sb, p_sb = get_lca_children_split(n, p)
-    #     if n_sb.bot < p_sb.top:  # current block must be above the parent block
-    #         height_change = p_sb.top - n_sb.bot
-    #         n_sb.bot += height_change
-    #         n_sb.top += height_change
-    # n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
-
-
 def process_gate_return(g: CallNode) -> None:
-    # g = gate node
-    # Annotate the returned Signal with current node fpath
-    # s = arg  # signal returned by the gate
-    # s.trace.append(g)  # assumes that s.trace is [] except when turned into [gate_node] by this function
     if len(g.outputs) == 0:
         return
     s = g.outputs[0][0]  # Get the output signal of the gate
@@ -213,112 +191,6 @@ def process_gate_return(g: CallNode) -> None:
     s.trace.append(g)
     g.top += 1  # Set top height of g to 1, since gate is the only leaf node
     g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
-
-    # # Update n ancestors that are sibling blocks with s's parents
-    # # nodes were assigned to parents when their nodes were created
-    # s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
-
-    # # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
-    # if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
-    #     g.is_live = True
-
-    # for p in s_parent_nodes:
-    #     g_ancestor, p_ancestor = get_lca_children_split(g, p)
-    #     if g_ancestor.bot < p_ancestor.top:  # current block must be above the parent block
-    #         height_change = p_ancestor.top - g_ancestor.bot
-    #         g_ancestor.bot += height_change
-    #         g_ancestor.top += height_change
-
-
-
-# def process_gate_return_test(gate_node: CallNode, arg: Any) -> None:
-#     """
-#     Process gate return event
-#     # Idea for how to create blocks during ftrace:
-#     # Catch all events of gate return and:
-#     # - annotate the returned Signal s with current node node_fpath
-#     # - update all s parent fn blocks:
-#     #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
-#     #     - ensure that the current block is above the parent block
-#     # Now we have relative bot/top height for all blocks that generate Signals
-#     # TODO: handle blocks that do not generate Signals
-#     """
-#     g = gate_node
-#     if len(g.outputs) == 0:
-#         return
-#     # s = g.outputs[0][0]  # Get the output signal of the gate
-#     # assert len(g.outputs) == 1 and g.name == 'gate'
-#     # assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
-#     # s.trace.append(g)
-#     # g.top += 1  # Set top height of g to 1, since gate is the only leaf node
-#     # g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
-
-#     # Annotate the returned Signal with current node fpath
-#     n = gate_node
-#     s = arg  # signal returned by the gate
-#     s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
-
-#     if n.name != 'gate':
-#         raise ValueError(f"Expected gate node, got {n.name} instead")
-#     n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
-
-#     # Update n ancestors that are sibling blocks with s's parents
-#     # nodes were assigned to parents when their nodes were created
-#     s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
-
-#     # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
-#     if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
-#         g.is_live = True
-
-#     for p in s_parent_nodes:
-#         n_sb, p_sb = get_lca_children_split(g, p)
-#         if n_sb.bot < p_sb.top:  # current block must be above the parent block
-#             height_change = p_sb.top - n_sb.bot
-#             n_sb.bot += height_change
-#             n_sb.top += height_change
-
-#     n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
-
-
-
-# def process_gate_return_old(gate_node: CallNode, arg: Any) -> None:
-#     """
-#     Process gate return event
-#     # Idea for how to create blocks during ftrace:
-#     # Catch all events of gate return and:
-#     # - annotate the returned Signal s with current node node_fpath
-#     # - update all s parent fn blocks:
-#     #     - for each (node_fpath, parent_fpath) find their sibling blocks (n_sb, p_sb) within the last common ancestor
-#     #     - ensure that the current block is above the parent block
-#     # Now we have relative bot/top height for all blocks that generate Signals
-#     # TODO: handle blocks that do not generate Signals
-#     """
-
-#     # Annotate the returned Signal with current node fpath
-#     n = gate_node
-#     s = arg  # signal returned by the gate
-#     s.trace.append(n)  # assumes that s.trace is [] except when turned into [gate_node] by this function
-
-#     if n.name != 'gate':
-#         raise ValueError(f"Expected gate node, got {n.name} instead")
-#     n.top += 1  # Set top height of the current node to 1, since gate is the only leaf node
-
-#     # Update n ancestors that are sibling blocks with s's parents
-#     # nodes were assigned to parents when their nodes were created
-#     s_parent_nodes = [p.trace[0] for p in s.source.incoming if len(p.trace)>0]
-
-#     # One of the parent signals has no node -> it is an input. Therefore this node is live (downstream from inputs)
-#     if len(s_parent_nodes) != len(s.source.incoming) or any([p.is_live for p in s_parent_nodes]):
-#         n.is_live = True
-
-#     for p in s_parent_nodes:
-#         n_sb, p_sb = get_lca_children_split(n, p)
-#         if n_sb.bot < p_sb.top:  # current block must be above the parent block
-#             height_change = p_sb.top - n_sb.bot
-#             n_sb.bot += height_change
-#             n_sb.top += height_change
-
-#     n.right += 1  # Set the right position of the current node to 1, since gate is the only leaf node
 
 
 def set_top(node: CallNode) -> None:
@@ -329,6 +201,122 @@ def set_top(node: CallNode) -> None:
     if node.name == 'gate':
         block_height = 1
     node.top = node.bot + block_height
+
+
+@dataclass
+class Source:
+    node: CallNode | None  # None = in inputs
+    height: int  # how high the source is in the
+    index: int  # node.outputs[index] == signal
+
+@dataclass
+class CopyTower:
+    tower: list[Source | None]
+    node: CallNode  # node in which this copy tower exists
+    highest: int  # highest copy in the tower (not counting disconnected copies)
+    lowest: int  # lowest copy in the tower
+    initial_state: str = ""
+
+    @classmethod
+    def from_source(cls, node: CallNode, source: Source) -> 'CopyTower':
+        tower: list[Source | None] = [None] * (node.h+1)
+        assert len(tower) > source.height, f"Failed! source.height={source.height}, len(tower)={len(tower)} \n{node}"
+        tower[source.height] = source  # Set the source at its height
+        assert source is not None
+        assert tower[source.height] is not None 
+        initial_state = f"{[(s.node, source.height) if s is not None else None for s in tower]}"
+        # assert initial_state != "[None, None]"
+        return cls(tower, node, source.height, source.height, initial_state)
+
+    def get_source(self, height: int, count: int) -> Source:
+        """Gets the source at the given height, adding copies if necessary.
+        E.g. if node at height=3 needs source, it will ask get_source(3)"""
+        assert len(self.tower) > height, f"Failed! height={height}, len(tower)={len(self.tower)}, \n{self.node}"
+        assert self.lowest is not None
+        assert height >= self.lowest, f"Sink before source! {height}<{self.lowest}; \n{self.node}"
+        if self.tower[height] is None:
+            self.add_copies(height, count)
+        result = self.tower[height]
+        assert result is not None, f"No source found at height {height} in tower - add_copies failed."
+        return result
+        # TODO: give warning if sink below any source
+    
+    def add_copies(self, height: int, count: int) -> None:
+        """Adds copies up to given height"""
+        # TODO: update count
+        # initial_tower = f"tower:{[s.node if s is not None else None for s in self.tower]}"
+        while self.highest < height:
+            # print(f'added copy to tower at height {self.node.name}-{self.node.count}, height={height}, highest={self.highest}, lowest={self.lowest}')
+            self.highest += 1
+            if self.tower[self.highest] is not None:
+                continue  # already has a copy at this height
+            new_left = self.node.add(bot=self.highest-1, top=self.highest, width=1)  # make room for a copy
+            copy_node = CallNode(name='copy', count=count, parent=self.node, depth=self.node.depth + 1, bot=self.highest-1, top=self.highest, left=new_left, right=new_left+1)
+            # print(f"Connecting sink to source at {self.node.name}")
+            self.node.children.append(copy_node)  # Add copy node to the children
+            self.tower[self.highest] = Source(node=copy_node, height=self.highest, index=0)
+        string = f"Failed copies: height={height}, len(tower)={len(self.tower)}"
+        string += f", highest={self.highest}, lowest={self.lowest}, tower:{[s.node if s is not None else None for s in self.tower]}"
+        string += f", initial_tower: {self.initial_state},"
+        string += f"\n{self.node}"
+        assert self.tower[height] is not None, string
+
+
+
+def set_connections(node: CallNode) -> None:
+    # problem: some inputs might from layers further than the previous layer
+    # idea: connect locations where the signal is required (sinks) and produced (sources)
+    # sources = inputs and children outputs
+    # sinks = outputs and children inputs
+    # method: copy a signal from its earlierst source to latest sink
+    if node.name != 'round':
+        return
+
+    if node.h == 0 or node.name in {'gate', 'copy', 'const'}:
+        # TODO: consider connecting inputs to outputs
+        return
+    # ignore gate subcalls
+    if 'gate' in [p.name for p in node.fpath[:-1]]:
+        return
+
+    # collect sources
+    sources: dict[Signal, CopyTower] = dict()
+    for i, inp in enumerate([s for s,_ in node.inputs]):
+        if inp not in sources:
+            sources[inp] = CopyTower.from_source(node, Source(node=None, height=0, index=i))
+    for c in node.children:
+        for i, out in enumerate([s for s,_ in c.outputs]):
+            if out not in sources:
+                sources[out] = CopyTower.from_source(node, Source(node=c, height=c.top, index=i))
+            elif c.top < sources[out].highest:  # available earlier
+                sources[out].highest = c.top
+
+    # collect sinks
+    copy_counter = 0
+    for i, sink in enumerate([s for s,_ in node.outputs]):
+        assert sink in sources, f"Sink {sink} not found in sources. This should not happen."
+        source = sources[sink].get_source(height=node.h, count=copy_counter)
+        # print(f"Connecting sink {node.name}-outputs to source {source.node.name} at index {source.index}")
+        copy_counter += 1
+        node.input_sources.append((source.node, source.index))  # Add the source node and its index to the input sources
+    for c in node.children:
+        for sink in [s for s,_ in c.inputs]:
+            assert sink in sources, f"Sink {sink} not found in sources. This should not happen."
+            source = sources[sink].get_source(height=c.bot, count=copy_counter)
+            # print(f"Connecting sink {c.name}-inputs to source at index {source.index}")
+            copy_counter += 1
+            c.input_sources.append((source.node, source.index))  # Add the source node and its index to the input sources
+    # print(f"Connecting {node.name}")
+
+    # TODO: use ordered sets for determinism
+    # TODO: consider optimizations, e.g. use sets, or make fewer copies
+
+    # children_by_descending_out_height = sorted(node.children, key=lambda c: c.top, reverse=True)
+    # sorted_children = sorted(node.children, key=lambda c: c.top, reverse=True)
+    # out_sources_in_descending_height = [{c.top: c.output_set} for c in sorted_children]
+    # out_sources_in_descending_height += [{0: node.input_set}]  # inputs can also be used in outputs
+    # for output in [s for s, _ in node.outputs]:
+
 
 
 def set_left_right(node: CallNode) -> None:
@@ -443,6 +431,7 @@ class Tracer:
                 # Extract function arguments and find Signals
                 for name, value in frame.f_locals.items():
                     node.inputs.extend(find_signals(value, (name,)))
+                    # node.input_set = {s for s, _ in node.inputs}
                     
             elif event == 'return':
                 func_name = frame.f_code.co_name
@@ -451,7 +440,6 @@ class Tracer:
                     node = stack[-1]
                     node.outputs = find_signals(arg, ())
                     process_gate_return(node)
-                    # process_gate_return_test(node, arg)
 
                 # Handle skipping and collapse
                 if skip_depth > 0:
@@ -465,11 +453,12 @@ class Tracer:
                 if len(stack) > 1:
                     node = stack.pop()
                     node.outputs = find_signals(arg, ())
-                    # node.outputs.extend(find_signals(arg, ()))
+                    # node.output_set = {s for s, _ in node.outputs}
 
                     # Sets node's coordinates. Only other update to it could have occurred before in process_gate_return.
                     update_ancestor_heights(node)
                     set_top(node)
+                    # set_connections(node)
                     set_left_right(node)
 
                     if node.depth > max_depth:
@@ -477,20 +466,14 @@ class Tracer:
 
                     if any([c.is_live for c in node.children]):
                         node.is_live = True
-                        # if node.name == 'const':
-                        #     print(f"const live!, its children: {[f"{c.name}-{len(c.inputs)}" for c in node.children]}")
-                        #     for c in node.children:
-                        #         print(f"  {c.name}-{len(c.inputs)}, c.is_live:{c.is_live}, len(c.inputs): {len(c.inputs)}")
-                        #     assert False
-                        if node.name == 'gate' and len(node.inputs)==0:
-                            print(f"gate with no inputs live! {f"{node.name}-{len(node.inputs)}"}")
-                            assert False
 
                 # Root return
                 else:
                     root.outputs.extend(find_signals(arg, ()))
+                    # root.output_set = {s for s, _ in root.outputs}
                     # TODO: why not pop the root same as above?
 
+                    # set_connections(root)
                     # Update current node's top and right
                     if root.children:
                         root.top = max([c.top for c in root.children])

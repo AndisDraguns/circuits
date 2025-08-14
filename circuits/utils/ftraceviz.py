@@ -107,6 +107,8 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
 
     if small:
         color += Color(50,0,-100)
+    if node.name == 'copy':
+        color += Color(-50,0,0)
 
 
     # Generate children HTML
@@ -273,7 +275,7 @@ if __name__ == '__main__':
     from circuits.neurons.core import Bit
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
-    k = Keccak(c=10, l=0, n=2, pad_char='_')
+    k = Keccak(c=10, l=0, n=1, pad_char='_')
 
     msg = k.format("Reify semantics as referentless embeddings", clip=True)
     trace = tracer.run(f, m=msg, k=k)
