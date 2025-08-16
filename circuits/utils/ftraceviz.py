@@ -3,8 +3,11 @@ from turtle import tracer
 from typing import NamedTuple
 
 from circuits.neurons.core import Bit
-from circuits.utils.ftrace import CallNode, Tracer, Trace
+from circuits.utils.ftrace import Tracer
 from circuits.utils.format import Bits
+
+from circuits.utils.blocks import Block
+# , blocks_from_nodes, post_process_trace
 
 # TODO: add copies
 
@@ -74,7 +77,7 @@ class VisualizationConfig:
         return color
 
 
-def generate_block_html(node: CallNode, config: VisualizationConfig, 
+def generate_block_html(node: Block, config: VisualizationConfig, 
                         max_depth: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
     if node.name in {'__init__', 'outgoing'}:
@@ -83,6 +86,8 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
     # Create rectangle and apply transformations
     rect = Rect(node.x, node.y, node.w, node.h)
     rect = rect.shrink(config.get_shrink_amount(node.depth, max_depth))
+    assert root_dims[0]>0
+    assert root_dims[1]>0
     rect = rect.to_percentages(*root_dims)
     # if rect.w <= 0 or rect.h <= 0:
         # return ""  # exclude invisible elements
@@ -223,13 +228,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def save_visualization(trace: Trace,
+def save_visualization(root: Block,
                       filename: str = "index.html",
                       config: VisualizationConfig | None = None) -> None:
     """Generate and save visualization to file"""
     config = config or VisualizationConfig()
-    r = trace.root
-    blocks_html = generate_block_html(r, config, trace.max_depth, (r.w, r.h))
+    # b = Block.from_node(root)
+    # b = blocks_from_nodes()
+    # root.process()
+    # _, max_depth = post_process_trace(b)
+    b = root.children[0] # get rid of the wrapper
+    b.parent = None
+    assert b.w > 0, f"Block width is non-positive: {b.w}, {b.name}, {b.left}, {b.right}"
+    assert b.h > 0, f"Block height is non-positive: {b.h}, {b.name}, {b.bot}, {b.top}"
+    blocks_html = generate_block_html(b, config, b.max_leaf_depth, (b.w, b.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -270,21 +282,32 @@ def save_visualization(trace: Trace,
 
 # Example usage
 if __name__ == '__main__':
-    tracer = Tracer()
+    # tracer = Tracer(use_defaults=True)
+    tracer = Tracer(use_defaults=False)
     from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
 
-    msg = k.format("Reify semantics as referentless embeddings", clip=True)
-    trace = tracer.run(f, m=msg, k=k)
+    msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
+    b1 = Block.from_node(tracer.run(f, m=msg1, k=k)).process()
+    print(b1.children[0].out_str)
 
     msg2 = k.format("Test", clip=True)
-    trace2 = tracer.run(f, m=msg2, k=k)
+    b2 = Block.from_node(tracer.run(f, m=msg2, k=k)).process()
+    print(b2.children[0].out_str)
 
-    trace2.highlight_differences(trace)
-    save_visualization(trace2)
+    b2.highlight_differences(b1)
+    # assert False
+
+    from circuits.utils.blocks import walk_generator
+    for b, _ in walk_generator(b2):
+        if b.highlight:
+            print(b.path)
+
+    save_visualization(b2)
+    # save_visualization(b1)
 
 
 # from circuits.utils.format import Bits
