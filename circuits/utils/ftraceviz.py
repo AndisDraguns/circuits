@@ -95,7 +95,7 @@ def generate_block_html(node: CallNode, config: VisualizationConfig,
         small = True
     
     # Generate tooltip
-    out_str = Bits([s for s, _ in node.outputs]).bitstr
+    out_str = Bits(list(node.outputs)).bitstr
     truncated = out_str[:config.max_output_chars]
     if len(out_str) > config.max_output_chars:
         truncated += '...'

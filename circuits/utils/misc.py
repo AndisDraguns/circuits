@@ -34,6 +34,9 @@ class OrderedSet(MutableSet[T]):
     def __iter__(self) -> Iterator[T]:
         return self._d.__iter__()
 
+    def __add__(self, other: Set[Any]) -> "OrderedSet[T]":
+        return self.__or__(other)
+
     def __repr__(self) -> str:
         return f"{{{', '.join(str(i) for i in self)}}}"
 
