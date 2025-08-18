@@ -23,6 +23,7 @@ class CallNode[T]:
     fn_counts: dict[str, int] = field(default_factory=dict[str, int])  # child fn name -> # direct calls in self
     skip: bool = False
     is_creator: bool = False  # True if this node is __init__ of the tracked T instance
+    created: T | None = None  # Instance created by this node, if any
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
         self.fn_counts[fn_name] = self.fn_counts.get(fn_name, -1) + 1
@@ -149,6 +150,7 @@ class Tracer[T]:
                 # Tag tracked_type __init__ calls
                 if fn_name == '__init__' and 'self' in loc and isinstance(loc['self'], self.tracked_type):
                     node.is_creator = True
+                    node.created = loc['self']
 
 
             elif event == 'return':

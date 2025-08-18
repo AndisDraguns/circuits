@@ -17,6 +17,8 @@ class Block[T]:
     inputs: OrderedSet[T]
     outputs: OrderedSet[T]
     depth: int  # Nesting depth in the call tree
+    is_creator: bool  # True if this node is __init__ of the tracked T instance
+    created: T | None = None  # Instance created by this node, if any
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
 
@@ -112,7 +114,7 @@ class Block[T]:
             path = f"{n.name}-{n.count}"
             if n.parent is not None:
                 path = f"{node_to_block[n.parent].path}." + path
-            b = Block[T](n.name, path, n.inputs, n.outputs, n.depth)
+            b = Block[T](n.name, path, n.inputs, n.outputs, n.depth, n.is_creator, n.created)
             node_to_block[n] = b
             if n.parent:
                 b.parent = node_to_block[n.parent]
@@ -155,20 +157,19 @@ def get_lca_children_split(x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]
 
 def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
     """
-    On return of a node n, set node's height to be after its inputs, update ancestor heights if necessary.
-    For each input, its creator gate node g is located. 
+    On return of a block n, set blocks's height to be after its inputs, update ancestor heights if necessary.
+    For each input, its creator block g is located. 
     """
-    # ignore gate subcalls, since is_live calculation assumes that gate is a leaf node
-    if 'gate' in [p.name for p in n.fpath[:-1]]:
+    # ignore creator subcalls, since is_live calculation assumes that creator is a leaf node
+    if any([p.is_creator for p in n.fpath[:-1]]):
         return
+        # TODO: avoid traversing the entire depth of the tree
 
     for inp in n.inputs:
         if inp not in instance_to_block:
-        # if len(inp.trace) == 0:
             n.is_live = True  # no trace -> input created outside of fn -> node is live (downstream from inputs)
             continue
         g = instance_to_block[inp]
-        # g = inp.trace[0]
         n_ancestor, g_ancestor = get_lca_children_split(n, g)
         if g_ancestor.is_live:
             n.is_live = True
@@ -178,22 +179,16 @@ def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -
             n_ancestor.top += height_change
 
     # TODO: can we update max shifting parent instead of fully looping over all inputs?
-    # TODO: add copies if input gates are distant
+    # TODO: add copies if input creators are distant
 
 
-def process_gate_return(g: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
-    assert len(g.outputs) == 1
-    if len(g.outputs) == 0:
-        return
-    s = list(g.outputs)[0]  # Get the output signal of the gate
-    assert g.name == 'gate', f"Expected gate node, got {g.name}"
-    assert len(g.outputs) == 1
-    # assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
-    assert s not in instance_to_block, f"g should not be in instance_to_block before processing. g = {g}"
-    instance_to_block[s] = g
-    # s.trace.append(g)
-    g.top += 1  # Set top height of g to 1, since gate is the only leaf node
-    g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
+def process_creator(b: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
+    assert b.is_creator and b.created is not None, f"Expected creator node, got {b.name}"
+    instance = b.created
+    assert instance not in instance_to_block, f"b already in instance_to_block, b={b}"
+    instance_to_block[instance] = b
+    b.top += 1  # Set top height of b to 1, since it is the only leaf node
+    b.right += 1  # Set the right position of b to 1, since it is the only leaf node
 
 
 def set_top(node: Block[T]) -> None:
@@ -201,7 +196,7 @@ def set_top(node: Block[T]) -> None:
     if not node.children:
         return
     block_height = max([c.top for c in node.children])
-    if node.name == 'gate':
+    if node.is_creator:
         block_height = 1
     node.top = node.bot + block_height
 
@@ -239,8 +234,8 @@ def post_process_trace(root: Block[T]) -> Block[T]:
 
         # The following must be on return
         # Sets node's coordinates
-        if b.name == 'gate':
-            process_gate_return(b, instance_to_block)
+        if b.is_creator:
+            process_creator(b, instance_to_block)
         update_ancestor_heights(b, instance_to_block)
         set_top(b)
         set_left_right(b)
@@ -290,8 +285,6 @@ def post_process_trace(root: Block[T]) -> Block[T]:
 #     phrase = "Reify semantics as referentless embeddings"
 #     message = k.format(phrase, clip=True)
 #     trace = tracer.run(test, message=message, k=k)
-#     hide = {'gate'}
-#     # print(trace.root.__str__(hide=hide))
 
 #     b = blocks_from_nodes(trace.root)
 #     _, max_depth = post_process_trace(b)
