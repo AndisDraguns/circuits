@@ -9,6 +9,7 @@ from circuits.utils.misc import OrderedSet
 
 T = TypeVar('T')
 
+
 @dataclass(eq=False)
 class CallNode[T]:
     """Represents a function call with its Signal inputs/outputs"""

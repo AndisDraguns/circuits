@@ -1,22 +1,24 @@
 from dataclasses import dataclass, field
 from collections.abc import Generator
-from typing import Literal
+from typing import Literal, TypeVar
 
-from circuits.neurons.core import Signal
 from circuits.utils.misc import OrderedSet
 from circuits.utils.format import Bits
 from circuits.utils.ftrace import CallNode, node_walk_generator
 
+T = TypeVar('T')
+
+
 @dataclass(eq=False)
-class Block:
+class Block[T]:
     """Represents a function call with its Signal inputs/outputs"""
     name: str
     path: str
-    inputs: OrderedSet[Signal]
-    outputs: OrderedSet[Signal]
+    inputs: OrderedSet[T]
+    outputs: OrderedSet[T]
     depth: int  # Nesting depth in the call tree
-    parent: 'Block | None' = None
-    children: list['Block'] = field(default_factory=list['Block'])
+    parent: 'Block[T] | None' = None
+    children: list['Block[T]'] = field(default_factory=list['Block[T]'])
 
     bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
     top: int = 0  # Top height of the node in the call tree (relative to self.bot)
@@ -37,10 +39,10 @@ class Block:
 
 
     @property
-    def fpath(self) -> tuple['Block', ...]:
+    def fpath(self) -> tuple['Block[T]', ...]:
         """Returns the function path as a tuple of Block from root to this node."""
-        path: list['Block'] = []
-        current: Block | None = self
+        path: list['Block[T]'] = []
+        current: Block[T] | None = self
         while current:
             path.append(current)
             current = current.parent
@@ -88,7 +90,7 @@ class Block:
         return res
     
     def __repr__(self):
-        return f"b {self.name}"
+        return f"{self.name}"
 
     def full_info(self) -> str:
         s = f"name-count: {self.name}\n"
@@ -104,13 +106,13 @@ class Block:
     
 
     @classmethod
-    def from_node(cls, root_node: CallNode[Signal]) -> 'Block':
-        node_to_block: dict[CallNode[Signal], Block] = {}
+    def from_node(cls, root_node: CallNode[T]) -> 'Block[T]':
+        node_to_block: dict[CallNode[T], Block[T]] = {}
         for n, _ in node_walk_generator(root_node, order='call'):
             path = f"{n.name}-{n.count}"
             if n.parent is not None:
                 path = f"{node_to_block[n.parent].path}." + path
-            b = Block(n.name, path, n.inputs, n.outputs, n.depth)
+            b = Block[T](n.name, path, n.inputs, n.outputs, n.depth)
             node_to_block[n] = b
             if n.parent:
                 b.parent = node_to_block[n.parent]
@@ -118,12 +120,12 @@ class Block:
         return node_to_block[root_node]
 
 
-    def process(self) -> 'Block':
+    def process(self) -> 'Block[T]':
         post_process_trace(self)
         return self
 
 
-    def highlight_differences(self, root2: 'Block') -> None:
+    def highlight_differences(self, root2: 'Block[T]') -> None:
         """
         Highlights the differences between two call trees.
         Sets 'highlight' flag in for each call node that differs from the corresponding node in the other tree.
@@ -138,7 +140,7 @@ class Block:
                 node1.outdiff = "".join([' ' if s1==s2 else s2 for s1, s2 in zip(node1.out_str, node2.out_str)])
 
 
-def get_lca_children_split(x: Block, y: Block) -> tuple[Block, Block]:
+def get_lca_children_split(x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]]:
     """
     Find the last common ancestor of x and y.
     Then returns its two children a and b that are on paths to x and y respectively.
@@ -151,7 +153,7 @@ def get_lca_children_split(x: Block, y: Block) -> tuple[Block, Block]:
     raise ValueError("x and y are on the same path to root")
 
 
-def update_ancestor_heights(n: Block) -> None:
+def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
     """
     On return of a node n, set node's height to be after its inputs, update ancestor heights if necessary.
     For each input, its creator gate node g is located. 
@@ -161,10 +163,12 @@ def update_ancestor_heights(n: Block) -> None:
         return
 
     for inp in n.inputs:
-        if len(inp.trace) == 0:
+        if inp not in instance_to_block:
+        # if len(inp.trace) == 0:
             n.is_live = True  # no trace -> input created outside of fn -> node is live (downstream from inputs)
             continue
-        g = inp.trace[0]
+        g = instance_to_block[inp]
+        # g = inp.trace[0]
         n_ancestor, g_ancestor = get_lca_children_split(n, g)
         if g_ancestor.is_live:
             n.is_live = True
@@ -177,20 +181,22 @@ def update_ancestor_heights(n: Block) -> None:
     # TODO: add copies if input gates are distant
 
 
-def process_gate_return(g: Block) -> None:
+def process_gate_return(g: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
     assert len(g.outputs) == 1
     if len(g.outputs) == 0:
         return
     s = list(g.outputs)[0]  # Get the output signal of the gate
     assert g.name == 'gate', f"Expected gate node, got {g.name}"
     assert len(g.outputs) == 1
-    assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
-    s.trace.append(g)
+    # assert s.trace == [], f"s.trace should be [] before creation of gate node, got {s.trace}"
+    assert s not in instance_to_block, f"g should not be in instance_to_block before processing. g = {g}"
+    instance_to_block[s] = g
+    # s.trace.append(g)
     g.top += 1  # Set top height of g to 1, since gate is the only leaf node
     g.right += 1  # Set the right position of g to 1, since gate is the only leaf node
 
 
-def set_top(node: Block) -> None:
+def set_top(node: Block[T]) -> None:
     """Sets the top height of the node based on its children"""
     if not node.children:
         return
@@ -200,7 +206,7 @@ def set_top(node: Block) -> None:
     node.top = node.bot + block_height
 
 
-def set_left_right(node: Block) -> None:
+def set_left_right(node: Block[T]) -> None:
     """Sets the left and right position of the node based on its parent"""
     if not node.parent:
         return
@@ -212,8 +218,8 @@ def set_left_right(node: Block) -> None:
     node.right = node.left + current_block_width
 
 
-def walk_generator(node: Block, order: Literal['call', 'return', 'both', 'either'] = 'either'
-                   ) -> Generator[tuple[Block, Literal['call', 'return']], None, None]:
+def walk_generator(node: Block[T], order: Literal['call', 'return', 'both', 'either'] = 'either'
+                   ) -> Generator[tuple[Block[T], Literal['call', 'return']], None, None]:
     """Walks the call tree and yields each node."""
     if order in {'call', 'both', 'either'}:
         yield node, 'call'
@@ -223,8 +229,9 @@ def walk_generator(node: Block, order: Literal['call', 'return', 'both', 'either
         yield node, 'return'
 
 
-def post_process_trace(root: Block) -> Block:
+def post_process_trace(root: Block[T]) -> Block[T]:
     """Processes the call tree"""
+    instance_to_block: dict[T, Block[T]] = {}
     for b, _ in walk_generator(root, order='return'):
         b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
 
@@ -233,8 +240,8 @@ def post_process_trace(root: Block) -> Block:
         # The following must be on return
         # Sets node's coordinates
         if b.name == 'gate':
-            process_gate_return(b)
-        update_ancestor_heights(b)
+            process_gate_return(b, instance_to_block)
+        update_ancestor_heights(b, instance_to_block)
         set_top(b)
         set_left_right(b)
         if any([c.is_live for c in b.children]):

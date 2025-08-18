@@ -1,14 +1,17 @@
 from dataclasses import dataclass, field
 from turtle import tracer
-from typing import NamedTuple
+from typing import NamedTuple, TypeVar
 
 from circuits.neurons.core import Bit
 from circuits.utils.ftrace import Tracer
 from circuits.utils.format import Bits
 from circuits.utils.blocks import Block
 
+T = TypeVar('T')
+
 # TODO: add copies
 # TODO: fix display of functions that do not create bits
+
 
 @dataclass(frozen=True)
 class Color:
@@ -68,7 +71,7 @@ class VisualizationConfig:
         return color
 
 
-def generate_block_html(node: Block, config: VisualizationConfig, 
+def generate_block_html(node: Block[T], config: VisualizationConfig, 
                         max_depth: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
     if node.name in {'__init__', 'outgoing'}:
@@ -214,7 +217,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def save_visualization(root: Block,
+def save_visualization(root: Block[T],
                       filename: str = "index.html",
                       config: VisualizationConfig | None = None) -> None:
     """Generate and save visualization to file"""
@@ -239,10 +242,10 @@ if __name__ == '__main__':
     k = Keccak(c=10, l=0, n=1, pad_char='_')
 
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
-    b1 = Block.from_node(tracer.run(f, m=msg1, k=k)).process()
+    b1 = Block[Bit].from_node(tracer.run(f, m=msg1, k=k)).process()
 
     msg2 = k.format("Test", clip=True)
-    b2 = Block.from_node(tracer.run(f, m=msg2, k=k)).process()
+    b2 = Block[Bit].from_node(tracer.run(f, m=msg2, k=k)).process()
 
     b2.highlight_differences(b1)
 
