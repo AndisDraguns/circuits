@@ -12,8 +12,6 @@ class Signal:
     source: "Neuron"
     metadata: dict[str, str] = field(default_factory=dict[str, str])
     trace: list[Any] = field(default_factory=list[Any])
-    # def __post_init__(self):
-    #     self.metadata['name'] = get_fn_stack('compiled')
 
     def __repr__(self):
         return f"Signal({self.activation})"

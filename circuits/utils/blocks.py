@@ -81,7 +81,6 @@ class Block:
         return res
 
     def __str__(self, level: int = 0, hide: set[str] = set()) -> str:
-        # return ""
         indent = "  " * level
         info = self.info_str()
         child_names = "".join(f"\n{c.__str__(level + 1, hide)}" for c in self.children if c.name not in hide)
@@ -105,13 +104,12 @@ class Block:
     
 
     @classmethod
-    def from_node(cls, root_node: CallNode) -> 'Block':
-        node_to_block: dict[CallNode, Block] = {}
+    def from_node(cls, root_node: CallNode[Signal]) -> 'Block':
+        node_to_block: dict[CallNode[Signal], Block] = {}
         for n, _ in node_walk_generator(root_node, order='call'):
             path = f"{n.name}-{n.count}"
             if n.parent is not None:
                 path = f"{node_to_block[n.parent].path}." + path
-                # print("path:",path)
             b = Block(n.name, path, n.inputs, n.outputs, n.depth)
             node_to_block[n] = b
             if n.parent:
@@ -136,26 +134,8 @@ class Block:
             node1, node2 = val1[0], val2[0]
             assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
             if node1.out_str != node2.out_str:
-                # print(node1.path)
                 node1.highlight = True
                 node1.outdiff = "".join([' ' if s1==s2 else s2 for s1, s2 in zip(node1.out_str, node2.out_str)])
-            # else:
-            #     if node2.name != 'root_wrapper_fn':
-            #         print(node2.name)
-            #         assert False, f"{node2.name}"
-
-# def blocks_from_nodes(root_node: CallNode) -> Block:
-#     node_to_block: dict[CallNode, Block] = {}
-#     for n, _ in node_walk_generator(root_node, order='call'):
-#         path = f"{n.name}-{n.count}"
-#         if n.parent is not None:
-#             path = f"{n.parent.full_name}." + path
-#         b = Block(n.name, path, n.inputs, n.outputs, n.depth)
-#         node_to_block[n] = b
-#         if n.parent:
-#             b.parent = node_to_block[n.parent]
-#             node_to_block[n.parent].children.append(b)
-#     return node_to_block[root_node]
 
 
 def get_lca_children_split(x: Block, y: Block) -> tuple[Block, Block]:
@@ -313,3 +293,12 @@ def post_process_trace(root: Block) -> Block:
     
 #     # print(len(b.children))
 #     print(b.__str__(hide=hide))
+
+
+# def get_output_levels(root: CallNode) -> list[OrderedSet[Signal]]:
+#     """Gets the output levels of the call tree."""
+#     levels: list[OrderedSet[Signal]] = [OrderedSet() for _ in range(root.top+1)]
+#     for n, _ in walk_generator(root):
+#         for out in n.outputs:
+#             levels[n.top].add(out)
+#     return levels
