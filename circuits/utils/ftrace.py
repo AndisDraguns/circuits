@@ -78,23 +78,14 @@ def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
 
 
 @dataclass
-class Tracer[T]:
-    tracked_type: type[T]
-    skip: set[str] = field(default_factory=set[str])
-    collapse: set[str] = field(default_factory=set[str])
-    use_defaults: bool = False
+class FTracer[T]:
+    tracked_type: type
+    skip: set[str]
+    collapse: set[str]
 
     def __post_init__(self) -> None:
         self.skip |= {'set_trace'}  # no need to track set_trace
         self.collapse |= {'<genexpr>'}  # avoids handling generator interactions with stack
-        c = {'__init__', '__post_init__', '<lambda>'}
-        c |= {'outgoing', 'const', 'xor', 'inhib', 'step'}
-        c |= {'format', 'bitlist', '_bitlist_from_value', '_is_bit_list', 'from_str'}
-        c |= {'_bitlist_to_msg', 'msg_to_state', 'get_round_constants', 'get_functions'}
-        c |= {'lanes_to_state', 'state_to_lanes', 'get_empty_lanes', 'copy_lanes'}
-        c |= {'rho_pi', 'rot', 'reverse_bytes'}
-        if self.use_defaults:
-            self.collapse |= c
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
         def root_wrapper_fn(*args: Any, **kwargs: Any) -> Any:
@@ -102,6 +93,12 @@ class Tracer[T]:
             return func(*args, **kwargs)
         trace = self.run_fn(root_wrapper_fn, *args, **kwargs)
         return trace
+
+    def inits_tracked_type(self, frame: FrameType) -> bool:
+        """Returns True if the frame is an __init__ of the tracked type"""
+        loc = frame.f_locals
+        fn_name = frame.f_code.co_name
+        return fn_name == '__init__' and 'self' in loc and isinstance(loc['self'], self.tracked_type)
 
     def run_fn(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
         """
@@ -131,7 +128,8 @@ class Tracer[T]:
                     skipping = True
                     skipped_frame_id = id(frame)
                     return trace_handler
-                if fn_name in self.collapse:
+                is_creator = self.inits_tracked_type(frame)
+                if fn_name in self.collapse and not is_creator:
                     return trace_handler  # Continue tracing children, but don't create a node
 
                 # Create a new node
@@ -148,9 +146,11 @@ class Tracer[T]:
                 node.inputs = find_instances(input_objects, self.tracked_type)
 
                 # Tag tracked_type __init__ calls
-                if fn_name == '__init__' and 'self' in loc and isinstance(loc['self'], self.tracked_type):
+                if is_creator:
                     node.is_creator = True
                     node.created = loc['self']
+
+                return trace_handler
 
 
             elif event == 'return':
@@ -163,9 +163,8 @@ class Tracer[T]:
                     skipping = False
                     return trace_handler
                 if skipping:
-                    assert not fn_name == 'gate', "Skipped gate call"
                     return trace_handler
-                if fn_name in self.collapse:
+                if fn_name in self.collapse and not self.inits_tracked_type(frame):
                     return trace_handler
 
                 # Remove node
@@ -173,6 +172,7 @@ class Tracer[T]:
 
                 # Record outputs
                 node.outputs = find_instances(arg, self.tracked_type)
+                return trace_handler
 
             return trace_handler
 
@@ -208,6 +208,6 @@ if __name__ == '__main__':
     k = Keccak(c=10, l=0, n=1, pad_char='_')
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
-    tracer = Tracer(Signal, use_defaults=True)
+    tracer = FTracer[Signal](Signal, set(), set())
     root = tracer.run(test, message=message, k=k)
     print(root)

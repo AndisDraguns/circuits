@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Literal, TypeVar
 
 from circuits.utils.misc import OrderedSet
@@ -31,12 +31,11 @@ class Block[T]:
     y: int = 0  # Absolute y coordinate (bottom edge)
     max_leaf_depth: int = -1
 
+    formatter: Callable[[T], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
-
-    highlight: bool = False  # Whether to highlight this node
-    is_live: bool = False  # live = generates signals that are downstream from inputs
-
+    # highlight: bool = False  # Whether to highlight this node
+    # is_live: bool = False  # live = generates signals that are downstream from inputs
     tags: set[str] = field(default_factory=set[str])
 
 
@@ -53,16 +52,21 @@ class Block[T]:
     @property
     def h(self) -> int:
         """Height in absolute units"""
-        assert self.top - self.bot >= 0, f"self.top - self.bot = {self.top - self.bot}, {self.name}"
         return self.top - self.bot
-    
+
     @property
     def w(self) -> int:
         """Width in absolute units"""
-        assert self.right - self.left >= 0, f"self.right - self.left = {self.right - self.left}, {self.name}"
         return self.right - self.left
 
-    def add(self, bot: int, top: int, width: int) -> int:
+    @property
+    def unwrapped(self) -> 'Block[T]':
+        assert self.name == "root_wrapper_fn"
+        b = self.children[0]  # get rid of the root wrapper fn
+        b.parent = None
+        return b
+
+    def update_levels(self, bot: int, top: int, width: int) -> int:
         """Adds a child node at bot-top height. width = child width.
         Updates self.levels widths. Returns the new child left position"""
         if len(self.levels) < top:
@@ -100,7 +104,7 @@ class Block[T]:
         s += f"full_name: {self.path}\n"
         s += f"depth of nesting: {self.depth}\n"
         s += f"x: {self.x}, y: {self.y}, w: {self.w}, h: {self.h}\n"
-        s += f"is_live: {self.is_live}, highlight: {self.highlight}\n"
+        s += f"live: {'live' in self.tags}, different: {'different' in self.tags}\n"
         s += f"out_str: '{self.out_str}'\n"
         if self.outdiff:
             s += f"outdiff: '{self.outdiff}'\n"
@@ -122,15 +126,10 @@ class Block[T]:
         return node_to_block[root_node]
 
 
-    def process(self) -> 'Block[T]':
-        post_process_trace(self)
-        return self
-
-
     def highlight_differences(self, root2: 'Block[T]') -> None:
         """
         Highlights the differences between two call trees.
-        Sets 'highlight' flag in for each call node that differs from the corresponding node in the other tree.
+        Sets 'highlight' flag in for each block that differs from the corresponding block in the other tree.
         """
         gen1 = walk_generator(self)
         gen2 = walk_generator(root2)
@@ -138,8 +137,13 @@ class Block[T]:
             node1, node2 = val1[0], val2[0]
             assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
             if node1.out_str != node2.out_str:
-                node1.highlight = True
-                node1.outdiff = "".join([' ' if s1==s2 else s2 for s1, s2 in zip(node1.out_str, node2.out_str)])
+                node1.tags.add('different')
+                # node1.highlight = True
+                for val1, val2 in zip(node1.outputs, node2.outputs):
+                    val1_str = self.formatter(val1)
+                    val2_str = self.formatter(val2)
+                    node1.outdiff += ' ' if val1_str==val2_str else val2_str
+
 
 
 def get_lca_children_split(x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]]:
@@ -160,19 +164,14 @@ def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -
     On return of a block n, set blocks's height to be after its inputs, update ancestor heights if necessary.
     For each input, its creator block g is located. 
     """
-    # ignore creator subcalls, since is_live calculation assumes that creator is a leaf node
-    if any([p.is_creator for p in n.fpath[:-1]]):
-        return
-        # TODO: avoid traversing the entire depth of the tree
-
     for inp in n.inputs:
         if inp not in instance_to_block:
-            n.is_live = True  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            n.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
             continue
         g = instance_to_block[inp]
         n_ancestor, g_ancestor = get_lca_children_split(n, g)
-        if g_ancestor.is_live:
-            n.is_live = True
+        if 'live' in g_ancestor.tags:
+            n.tags.add('live')
         if n_ancestor.bot < g_ancestor.top:  # current block must be above the parent block
             height_change = g_ancestor.top - n_ancestor.bot
             n_ancestor.bot += height_change
@@ -183,6 +182,7 @@ def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -
 
 
 def process_creator(b: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
+    """Process the creator node"""
     assert b.is_creator and b.created is not None, f"Expected creator node, got {b.name}"
     instance = b.created
     assert instance not in instance_to_block, f"b already in instance_to_block, b={b}"
@@ -201,16 +201,16 @@ def set_top(node: Block[T]) -> None:
     node.top = node.bot + block_height
 
 
-def set_left_right(node: Block[T]) -> None:
-    """Sets the left and right position of the node based on its parent"""
-    if not node.parent:
+def set_left_right(b: Block[T]) -> None:
+    """Sets the left and right position of the block based on its parent"""
+    if not b.parent:
         return
-    current_block_width = max(node.levels) if node.levels else node.right - node.left
-    if len(node.outputs) > current_block_width:
-        current_block_width = len(node.outputs)
-    horizontal_shift = node.parent.add(node.bot, node.top, current_block_width)
-    node.left += horizontal_shift
-    node.right = node.left + current_block_width
+    current_block_width = max(b.levels) if b.levels else b.w
+    if len(b.outputs) > current_block_width:
+        current_block_width = len(b.outputs)
+    horizontal_shift = b.parent.update_levels(b.bot, b.top, current_block_width)
+    b.left += horizontal_shift
+    b.right = b.left + current_block_width
 
 
 def walk_generator(node: Block[T], order: Literal['call', 'return', 'both', 'either'] = 'either'
@@ -229,8 +229,7 @@ def post_process_trace(root: Block[T]) -> Block[T]:
     instance_to_block: dict[T, Block[T]] = {}
     for b, _ in walk_generator(root, order='return'):
         b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
-
-        b.out_str = Bits(list(b.outputs)).bitstr
+        b.out_str = "".join([b.formatter(out) for out in b.outputs])
 
         # The following must be on return
         # Sets node's coordinates
@@ -239,9 +238,13 @@ def post_process_trace(root: Block[T]) -> Block[T]:
         update_ancestor_heights(b, instance_to_block)
         set_top(b)
         set_left_right(b)
-        if any([c.is_live for c in b.children]):
-            b.is_live = True
+        if any(['live' in c.tags for c in b.children]):
+            b.tags.add('live')
+        if 'live' not in b.tags:
+            b.tags.add('constant')
 
+        if b.parent is not None:
+            assert not b.parent.is_creator, "__init__ of the tracked type should be added to skip set"
     
     # Now that .left and .bot are finalized, we can  set absolute coordinates
     for b, _ in walk_generator(root):
@@ -252,53 +255,32 @@ def post_process_trace(root: Block[T]) -> Block[T]:
     return root
 
 
+from typing import Any, Literal
+from collections.abc import Callable, Generator
+from circuits.utils.ftrace import FTracer
+@dataclass
+class Tracer[T]:
+    skip: set[str] = field(default_factory=set[str])
+    collapse: set[str] = field(default_factory=set[str])
+    formatter: Callable[[T], str] = lambda x: str(x)
+
+    def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block[T]:
+        from circuits.neurons.core import Signal
+        ftracer = FTracer[T](Signal, self.skip, self.collapse)
+        node = ftracer.run(func, *args, **kwargs)
+        b = Block[T].from_node(node)
+        post_process_trace(b)
+        return b.unwrapped
 
 
-
-# def highlight_differences(root1: Block, root2: Block) -> None:
-#     """
-#     Highlights the differences between two call trees.
-#     Sets 'highlight' flag in for each call node that differs from the corresponding node in the other tree.
-#     """
-#     gen1 = walk_generator(root1)
-#     gen2 = walk_generator(root2)
-#     for val1, val2 in zip(gen1, gen2):
-#         node1, node2 = val1[0], val2[0]
-#         assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
-#         if node1.out_str != node2.out_str:
-#             node2.highlight = True
-#             node2.outdiff = "".join([' ' if s1==s2 else s1 for s1, s2 in zip(node1.out_str, node2.out_str)])
-
-
-# if __name__ == '__main__':
-    
-#     from circuits.utils.ftrace import Tracer
-#     tracer = Tracer(use_defaults=True)
-
-#     from circuits.examples.keccak import Keccak
-#     from circuits.neurons.core import Bit
-#     from circuits.utils.format import Bits
-#     def test(message: Bits, k: Keccak) -> list[Bit]:
-#         hashed = k.digest(message)
-#         return hashed.bitlist
-#     k = Keccak(c=10, l=0, n=1, pad_char='_')
-#     phrase = "Reify semantics as referentless embeddings"
-#     message = k.format(phrase, clip=True)
-#     trace = tracer.run(test, message=message, k=k)
-
-#     b = blocks_from_nodes(trace.root)
-#     _, max_depth = post_process_trace(b)
-#     # assert False
-#     # print("a")
-    
-#     # print(len(b.children))
-#     print(b.__str__(hide=hide))
-
-
-# def get_output_levels(root: CallNode) -> list[OrderedSet[Signal]]:
-#     """Gets the output levels of the call tree."""
-#     levels: list[OrderedSet[Signal]] = [OrderedSet() for _ in range(root.top+1)]
-#     for n, _ in walk_generator(root):
-#         for out in n.outputs:
-#             levels[n.top].add(out)
-#     return levels
+# Example usage
+if __name__ == '__main__':
+    from circuits.neurons.core import Bit
+    from circuits.examples.keccak import Keccak
+    def f(m: Bits, k: Keccak) -> list[Bit]:
+        return k.digest(m).bitlist
+    k = Keccak(c=10, l=0, n=1, pad_char='_')
+    tracer = Tracer[Bit]()
+    msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
+    b1 = tracer.run(f, m=msg1, k=k)
+    print(b1)

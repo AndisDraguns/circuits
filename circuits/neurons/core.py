@@ -1,17 +1,13 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any
 
 
 # Core MLP classes
 @dataclass(frozen=True, eq=False, slots=True)
 class Signal:
     """A connection point between neurons, with an activation value"""
-
     activation: bool | float
     source: "Neuron"
-    metadata: dict[str, str] = field(default_factory=dict[str, str])
-    trace: list[Any] = field(default_factory=list[Any])
 
     def __repr__(self):
         return f"Signal({self.activation})"

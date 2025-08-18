@@ -1,10 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from turtle import tracer
-from typing import NamedTuple, TypeVar
+from typing import TypeVar
 
-from circuits.neurons.core import Bit
-from circuits.utils.ftrace import Tracer
-from circuits.utils.format import Bits
+from circuits.utils.blocks import Tracer
 from circuits.utils.blocks import Block
 
 T = TypeVar('T')
@@ -25,15 +23,20 @@ class Color:
         return f"hsla({self.h}, {self.s}%, {self.l}%, 1.0)"
 
     def __add__(self, other: 'Color') -> 'Color':
-        return Color((self.h+other.h)%360, min(self.s+other.s, 100), min(self.l+other.l, 100))
+        return Color((self.h+other.h)%360, self.s+other.s, self.l+other.l)
+
+    def __mul__(self, k: float | int) -> 'Color':
+        return Color(self.h*k%360, self.s*k, self.l*k)
 
 
-class Rect(NamedTuple):
+@dataclass(frozen=True)
+class Rect:
     """Rectangle with percentage-based coordinates"""
     x: float
     y: float
     w: float
     h: float
+    small: bool = False  # True if rectangle was too small to display
     
     def shrink(self, amount: float) -> 'Rect':
         """Shrink rectangle by amount on all sides"""
@@ -44,16 +47,27 @@ class Rect(NamedTuple):
         """Convert absolute coordinates to percentages"""
         return Rect(self.x/root_w*100, self.y/root_h*100, self.w/root_w*100, self.h/root_h*100)
 
+    def ensure_visible_size(self, small_size: float = 0.2) -> 'Rect':
+        """Returns a rectangle that is guaranteed to be visible"""
+        if self.w > 0 and self.h > 0:
+            return self
+        else:
+            new_w = small_size if self.w <= 0 else self.h
+            new_h = small_size if self.h <= 0 else self.w
+            rect = Rect(self.x, self.y, new_w, new_h, small=True)
+            return rect
+
 
 @dataclass
-class VisualizationConfig:
+class VisualConfig:
     """Configuration for block visualization"""
-    base_color: Color = field(default_factory=lambda: Color(180, 95, 90))
-    hue_rotation: float = 2
-    lightness_decay: float = 8
-    highlight_transform: Color = field(default_factory=lambda: Color(200, 0, 0))
-    non_live_transform: Color = field(default_factory=lambda: Color(90, 0, 0))
-    hover_transform: Color = field(default_factory=lambda: Color(5, 0, -10))
+    base_color: Color = Color(180, 95, 90)  # cyan
+    depth_t: Color = Color(2, 0, -8)
+    different_t: Color = Color(200, 0, 0)
+    constant_t: Color = Color(90, 0, 0)
+    copy_t: Color = Color(-90, 0, 0)
+    small_t: Color = Color(0, 0, -80)
+    hover_t: Color = Color(5, 0, -10)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50
 
@@ -61,17 +75,22 @@ class VisualizationConfig:
         """Calculate shrink amount for given depth"""
         return depth * self.max_shrinkage / (max_depth + 1)
     
-    def get_color(self, depth: int, is_live: bool, highlight: bool) -> Color:
+    def get_color(self, depth: int, tags: set[str], is_small: bool) -> Color:
         """Calculate color for given depth"""
-        color = self.base_color + Color(depth*self.hue_rotation, 0, -depth*self.lightness_decay)
-        if not is_live:
-            color = color + self.non_live_transform
-        if highlight:
-            color = color + self.highlight_transform
+        color = self.base_color + self.depth_t * depth
+        if 'different' in tags:
+            color = color + self.different_t
+        if 'constant' in tags:
+            color = color + self.constant_t
+        if 'copy' in tags:
+            color = color + self.copy_t
+        if is_small:
+            color = color + Color(50, 0, -100)
+
         return color
 
 
-def generate_block_html(node: Block[T], config: VisualizationConfig, 
+def generate_block_html(node: Block[T], config: VisualConfig, 
                         max_depth: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
     if node.name in {'__init__', 'outgoing'}:
@@ -81,27 +100,15 @@ def generate_block_html(node: Block[T], config: VisualizationConfig,
     rect = Rect(node.x, node.y, node.w, node.h)
     rect = rect.shrink(config.get_shrink_amount(node.depth, max_depth))
     rect = rect.to_percentages(*root_dims)
-    small = False
-    if rect.w <= 0 or rect.h <= 0:
-        # return ""  # exclude invisible elements
-        new_w = 0.2 if rect.w <= 0 else rect.h
-        new_h = 0.2 if rect.h <= 0 else rect.w
-        rect = Rect(rect.x, rect.y, new_w, new_h)
-        small = True
+    rect = rect.ensure_visible_size()
     
     # Get color
-    color = config.get_color(node.depth, node.is_live, node.highlight)
-    hover_color = color + config.hover_transform
-
-    if small:
-        color += Color(50, 0, -100)
-    if node.name == 'copy':
-        color += Color(-50, 0, 0)
+    color = config.get_color(node.depth, node.tags, rect.small)
+    hover_color = color + config.hover_t
 
     # Generate tooltip
-    out_str = Bits(list(node.outputs)).bitstr
-    truncated = out_str[:config.max_output_chars]
-    if len(out_str) > config.max_output_chars:
+    truncated = node.out_str[:config.max_output_chars]
+    if len(node.out_str) > config.max_output_chars:
         truncated += '...'
     tooltip = node.full_info()
 
@@ -217,13 +224,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def save_visualization(root: Block[T],
+def visualize(b: Block[T],
                       filename: str = "index.html",
-                      config: VisualizationConfig | None = None) -> None:
+                      config: VisualConfig | None = None) -> None:
     """Generate and save visualization to file"""
-    config = config or VisualizationConfig()
-    b = root.children[0]  # get rid of the wrapper
-    b.parent = None
+    config = config or VisualConfig()
     assert b.w > 0 and b.h > 0 
     blocks_html = generate_block_html(b, config, b.max_leaf_depth, (b.w, b.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
@@ -233,24 +238,20 @@ def save_visualization(root: Block[T],
 
 # Example usage
 if __name__ == '__main__':
-    # tracer = Tracer(use_defaults=True)
-    tracer = Tracer(Bit)
-    from circuits.examples.keccak import Keccak
     from circuits.neurons.core import Bit
+    from circuits.utils.format import Bits
+    from circuits.examples.keccak import Keccak
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
-
+    tracer = Tracer[Bit]()
+   
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
-    b1 = Block[Bit].from_node(tracer.run(f, m=msg1, k=k)).process()
-
+    b1 = tracer.run(f, m=msg1, k=k)
     msg2 = k.format("Test", clip=True)
-    b2 = Block[Bit].from_node(tracer.run(f, m=msg2, k=k)).process()
-
+    b2 = tracer.run(f, m=msg2, k=k)
     b2.highlight_differences(b1)
-
-    save_visualization(b2)
-    # save_visualization(b1)
+    visualize(b2)
 
 
 

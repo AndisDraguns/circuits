@@ -41,10 +41,11 @@ class Node:
 
     @classmethod
     def from_signal(cls, s: Signal) -> "Node":
-        metadata = s.metadata.copy()
-        metadata['val'] = str(int(s.activation))
+        # metadata = s.metadata.copy()
+        # metadata['val'] = str(int(s.activation))
         
-        return cls(s, metadata)
+        # return cls(s, metadata)
+        return cls(s)
     
     def copy(self) -> "Node":
         """Copy node forward: same original_signal and metadata"""

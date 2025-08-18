@@ -4,63 +4,63 @@ from circuits.examples.keccak import Keccak
 from circuits.examples.capabilities.backdoors import get_sandbagger
 from circuits.utils.format import Bits
 
-def reevaluate(inputs: list[Bit], outputs: list[Bit], alt_inputs: list[Bit]) -> str:
-    """Re-evaluate linked bits on a different input"""
-    # 1) add the new input value as metadata
-    # 2) go back from outputs to inputs, logging depth
-    # 3) recompute forwards through the layers
+# def reevaluate(inputs: list[Bit], outputs: list[Bit], alt_inputs: list[Bit]) -> str:
+#     """Re-evaluate linked bits on a different input"""
+#     # 1) add the new input value as metadata
+#     # 2) go back from outputs to inputs, logging depth
+#     # 3) recompute forwards through the layers
 
-    # Add the new input value as metadata
-    for inp, alt in zip(inputs, alt_inputs):
-        inp.metadata['alt'] = str(int(alt.activation))
+#     # Add the new input value as metadata
+#     for inp, alt in zip(inputs, alt_inputs):
+#         inp.metadata['alt'] = str(int(alt.activation))
 
-    # Go backwards from outputs, constructing layers
-    layers: list[set[Bit]] = []
-    inp_set = set(inputs)
-    out_set = set(outputs)
-    seen: set[Bit] = set()
-    frontier = out_set
-    while frontier:
-        new_frontier: set[Bit] = set()
-        seen.update(frontier)
-        for child in frontier:
+#     # Go backwards from outputs, constructing layers
+#     layers: list[set[Bit]] = []
+#     inp_set = set(inputs)
+#     out_set = set(outputs)
+#     seen: set[Bit] = set()
+#     frontier = out_set
+#     while frontier:
+#         new_frontier: set[Bit] = set()
+#         seen.update(frontier)
+#         for child in frontier:
 
-            # Stop at inputs, they could have parents
-            if child in inp_set:
-                continue
+#             # Stop at inputs, they could have parents
+#             if child in inp_set:
+#                 continue
 
-            # For constants, just set the alt value to the activation
-            if len(child.source.incoming) == 0:
-                child.metadata['alt'] = str(int(child.activation))
+#             # For constants, just set the alt value to the activation
+#             if len(child.source.incoming) == 0:
+#                 child.metadata['alt'] = str(int(child.activation))
 
-            # Add parents to frontier
-            for p in child.source.incoming:
-                if p not in seen:
-                    new_frontier.add(p)
+#             # Add parents to frontier
+#             for p in child.source.incoming:
+#                 if p not in seen:
+#                     new_frontier.add(p)
 
-        layers.append(frontier)
-        frontier = new_frontier
+#         layers.append(frontier)
+#         frontier = new_frontier
 
-    print(f'Layers: {[len(layer) for layer in layers]}')
+#     print(f'Layers: {[len(layer) for layer in layers]}')
 
-    # Go forwards through the layers, re-evaluating bits
-    c = 0
-    for layer in reversed(layers):
-        # print(c)
-        c += 1
-        for bit in layer:
-            if bit not in inp_set:
-                neuron = bit.source
-                print(len(neuron.incoming))
-                summed = sum(int(p.metadata['alt']) * w for p, w in zip(neuron.incoming, neuron.weights))
-                bit.metadata['alt'] = str(neuron.activation_function(summed + neuron.bias))
-            # else:
-            #     print(f'Input bit alt value: {bit.metadata["alt"]}')
-            # if bit in outputs:
-            #     print(f'Output bit alt value: {bit.metadata["alt"]}')
+#     # Go forwards through the layers, re-evaluating bits
+#     c = 0
+#     for layer in reversed(layers):
+#         # print(c)
+#         c += 1
+#         for bit in layer:
+#             if bit not in inp_set:
+#                 neuron = bit.source
+#                 print(len(neuron.incoming))
+#                 summed = sum(int(p.metadata['alt']) * w for p, w in zip(neuron.incoming, neuron.weights))
+#                 bit.metadata['alt'] = str(neuron.activation_function(summed + neuron.bias))
+#             # else:
+#             #     print(f'Input bit alt value: {bit.metadata["alt"]}')
+#             # if bit in outputs:
+#             #     print(f'Output bit alt value: {bit.metadata["alt"]}')
 
-    alt_output_bitstr = ''.join(bit.metadata['alt'] for bit in outputs)
-    return alt_output_bitstr
+#     alt_output_bitstr = ''.join(bit.metadata['alt'] for bit in outputs)
+#     return alt_output_bitstr
 
 
 
