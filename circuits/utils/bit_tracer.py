@@ -26,8 +26,8 @@ if __name__ == '__main__':
     from circuits.examples.keccak import Keccak
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
-    k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = BitTracer()
+    k = Keccak(c=10, l=0, n=2, pad_char='_')
+    tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step'})
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)
     msg2 = k.format("Test", clip=True)

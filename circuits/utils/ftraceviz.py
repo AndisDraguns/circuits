@@ -66,10 +66,12 @@ class VisualConfig:
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
     copy_t: Color = Color(-90, 0, 0)
+    missing_t: Color = Color(-150, 0, 0)
     small_t: Color = Color(0, 0, -80)
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50
+    # TODO: try alternating darker/lighter for depth
 
     def get_shrink_amount(self, depth: int, max_depth: int) -> float:
         """Calculate shrink amount for given depth"""
@@ -78,14 +80,16 @@ class VisualConfig:
     def get_color(self, depth: int, tags: set[str], is_small: bool) -> Color:
         """Calculate color for given depth"""
         color = self.base_color + self.depth_t * depth
-        if 'different' in tags:
-            color = color + self.different_t
-        if 'constant' in tags:
-            color = color + self.constant_t
-        if 'copy' in tags:
-            color = color + self.copy_t
+        transforms = {'different': self.different_t,
+                      'constant': self.constant_t,
+                      'copy': self.copy_t,
+                      'missing': self.missing_t}
+        for tag in tags:
+            if tag in transforms:
+                color += transforms[tag]
         if is_small:
-            color = color + Color(50, 0, -100)
+            color += Color(50, 0, -100)
+            # TODO: consider warning about invisible elements
 
         return color
 

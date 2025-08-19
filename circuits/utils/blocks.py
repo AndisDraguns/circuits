@@ -36,7 +36,8 @@ class Block[T]:
     formatter: Callable[[T], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
-    tags: set[str] = field(default_factory=set[str])
+    # tags: set[str] = field(default_factory=set[str])
+    tags: set[str] = field(default_factory=lambda: {'constant'})
 
     # Output locations
     ox: int = 0  # x coordinate of the output
@@ -108,10 +109,10 @@ class Block[T]:
     def full_info(self) -> str:
         s = f"name-count: {self.name}\n"
         s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
-        s += f"full_name: {self.path}\n"
+        s += f"path: {self.path}\n"
         s += f"depth of nesting: {self.depth}\n"
         s += f"x: {self.x}, y: {self.y}, w: {self.w}, h: {self.h}\n"
-        s += f"live: {'live' in self.tags}, different: {'different' in self.tags}\n"
+        s += f"tags: {self.tags}\n"
         s += f"out_str: '{self.out_str}'\n"
         if self.outdiff:
             s += f"outdiff: '{self.outdiff}'\n"
@@ -121,9 +122,9 @@ class Block[T]:
     def from_node(cls, root_node: CallNode[T]) -> 'Block[T]':
         node_to_block: dict[CallNode[T], Block[T]] = {}
         for n, _ in node_walk_generator(root_node, order='call'):
-            path = f"{n.name}-{n.count}"
+            path = ""
             if n.parent is not None:
-                path = f"{node_to_block[n.parent].path}." + path
+                path = f"{node_to_block[n.parent].path}." + f"{n.name}-{n.count}"
             b = Block[T](n.name, path, n.depth, inputs=n.inputs, outputs=n.outputs, created=n.created)
             node_to_block[n] = b
             if n.parent:
@@ -189,12 +190,13 @@ def update_ancestor_heights(b: Block[T], instance_to_block: dict[T, Block[T]]) -
     """
     for inp in b.inputs:
         if inp not in instance_to_block:
-            b.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            # b.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            b.tags.discard('constant')
             continue
         g = instance_to_block[inp]
         b_ancestor, g_ancestor = get_lca_children_split(b, g)
-        if 'live' in g_ancestor.tags:
-            b.tags.add('live')
+        if not 'constant' in g_ancestor.tags:
+            b.tags.discard('constant')
         if b_ancestor.bot < g_ancestor.top:  # current block must be above the parent block
             height_change = g_ancestor.top - b_ancestor.bot
             b_ancestor.bot += height_change
@@ -270,8 +272,6 @@ def get_levels(root: Block[T]) -> list[OrderedSet[T]]:
 
 def add_copies(root: Block[T]) -> list[list[Block[T]]]:
     """Gets the instances required in the tree sorted into levels based in their height"""
-    # required: list[OrderedSet[T]] = [OrderedSet() for _ in range(root.top + 1)]
-    # instance_to_location: dict[T, Location[T]] = {}
     levels = get_levels(root)
 
     instance_to_block: dict[T, Block[T]] = {}
@@ -288,19 +288,31 @@ def add_copies(root: Block[T]) -> list[list[Block[T]]]:
             b.oy = i  # Set y coordinate of the output
             b.copies[i] = b  # Add self to copies for the current height
 
-    for level in levels:
-        # [instance_to_block[inst].path.split('.')[-4] for inst in level]
-        print(len(level))
-    print("\n")
+    # for level in levels:
+    #     # [instance_to_block[inst].path.split('.')[-4] for inst in level]
+    #     print(len(level))
+    # print("\n")
+
+    # TODO: Idea:
+    # get path from required to creator
+    # make a leveled path lpath - i.e. each lpath el has y decreased by 1
+    # that is - skip el that do not descend; and make several el when dropping within same block
+    # copy tree? from creator to required blocks
 
     copies: list[list[Block[T]]] = [[] for _ in range(root.top + 1)]
     for b, _ in walk_generator(root):
         if b.name == 'gate':
+        # if True:
             for inp_instance in b.inputs:
                 inp = instance_to_block[inp_instance]
                 assert inp.oy <= b.y, f"Instance required before it is created, {inp.oy}<={b.y}, inp:{inp.path}, b:{b.path}"
                 prev_height = b.y
                 inp_height = inp.oy
+                # if inp_height < prev_height and b.name != 'gate':
+                #     print(prev_height, inp_height, b.path, "    ", inp.path)
+                #     continue
+                # if b.name != 'gate':
+                #     continue
                 if inp_height == prev_height:
                     b.inp_indices.append(inp.ox)
                 elif inp_height < prev_height:
@@ -318,6 +330,47 @@ def add_copies(root: Block[T]) -> list[list[Block[T]]]:
                             curr_height += 1
     return copies
 
+# list[OrderedSet[Block[T]]]
+def get_availability(root: Block[T]) -> None:
+    instance_to_block: dict[T, Block[T]] = {}
+    for b, _ in walk_generator(root):
+        if b.created:
+            instance_to_block[b.created] = b
+    for j, inst in enumerate(root.inputs):
+        if inst not in instance_to_block:
+            instance_to_block[inst] = Block[T]('input', f'input-{j}', -1, created=inst)
+
+    available: dict[Block[T], list[OrderedSet[T]]] = dict()  # b -> available instances at each height
+    required: dict[Block[T], list[OrderedSet[T]]] = dict()  # b -> required instances at each height
+    for b, _ in walk_generator(root, 'either'):
+        # if 'constant' in b.tags:
+        #     continue
+        available[b] = [OrderedSet() for _ in range(b.h + 1)]
+        required[b] = [OrderedSet() for _ in range(b.h + 1)]
+        available[b][0] |= b.inputs
+        required[b][b.h] |= b.outputs
+        for c in b.children:
+            if b.name == 'gate' and c.name == '__init__':
+                assert c.created
+                available[b][c.top].add(c.created)  # since __init__ does not have outputs
+            available[b][c.top] |= c.outputs
+            required[b][c.bot] |= c.inputs
+        # Check if all required are available
+        for level in range(b.h + 1):
+            # diff = required[b][level].difference(available[b][level])
+            diff = required[b][level]._d.keys() - available[b][level]._d.keys()
+            if diff:
+                for inst in diff:
+                    b.tags.add('missing')
+                    # instance_to_block[inst].tags.add('missing')
+                print(f"n={len(diff)},\t level={level}: {b.path[-100:]} \t\t   {instance_to_block[list(diff)[0]].path[-100:]}")
+                # print(f"Block {b.path} is missing {len(diff)} instances at level {level}: e.g. {instance_to_block[list(diff)[0]].path}")
+                # try:
+                #     z = f"Block {b.path} is missing {len(diff)} instances at level {level}: e.g. {instance_to_block[list(diff)[0]].path}"
+                #     print(z)
+                # except:
+                #     print(f"! Block {b.path} is missing {len(diff)} instances at level {level})")
+    print("Done")
 
 from typing import Any, Literal
 from collections.abc import Callable, Generator
@@ -334,7 +387,9 @@ class Tracer[T]:
         node = ftracer.run(func, *args, **kwargs)
         b = Block[T].from_node(node)
         self.postprocessing(b)
-        return b.unwrapped
+        b = b.unwrapped
+        get_availability(b)
+        return b
 
     def postprocessing(self, root: Block[T]) -> Block[T]:
         """Processes the call tree"""
@@ -350,10 +405,8 @@ class Tracer[T]:
             # Set tags and info
             b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
             b.out_str = "".join([self.formatter(out) for out in b.outputs])
-            if any(['live' in c.tags for c in b.children]):
-                b.tags.add('live')
-            if 'live' not in b.tags:
-                b.tags.add('constant')
+            if any(['constant' not in c.tags for c in b.children]):
+                b.tags.discard('constant')
             assert b.parent is None or not b.parent.created, "type T __init__ subcalls should be added to skip set"
         
         # Now that .left and .bot are finalized, set absolute coordinates

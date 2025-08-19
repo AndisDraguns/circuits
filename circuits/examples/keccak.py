@@ -12,19 +12,32 @@ State = list[Bit]
 
 
 # Lanes reshaping and copying
-def get_empty_lanes(w: int) -> Lanes:
+def get_empty_lanes(w: int, placeholder: Bit) -> Lanes:
     """Returns lanes with placeholder Bit values.
     These values will never be used and will all be overwritten."""
-    return [[const("0" * w) for _ in range(5)] for _ in range(5)]
+    return [[[placeholder for _ in range(w)] for _ in range(5)] for _ in range(5)]
 
 
 def copy_lanes(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    new_lanes = get_empty_lanes(w)
+    new_lanes = get_empty_lanes(w, lanes[0][0][0])
     for x in range(5):
         for y in range(5):
             new_lanes[x][y] = lanes[x][y]
     return new_lanes
+
+# def get_empty_lanes(w: int) -> Lanes:
+#     """Returns lanes with placeholder Bit values.
+#     These values will never be used and will all be overwritten."""
+#     return [[const("0" * w) for _ in range(5)] for _ in range(5)]
+
+# def copy_lanes(lanes: Lanes) -> Lanes:
+#     w = len(lanes[0][0])
+#     new_lanes = get_empty_lanes(w)
+#     for x in range(5):
+#         for y in range(5):
+#             new_lanes[x][y] = lanes[x][y]
+#     return new_lanes
 
 
 def reverse_bytes(bits: list[Bit]) -> list[Bit]:
@@ -40,7 +53,7 @@ def reverse_bytes(bits: list[Bit]) -> list[Bit]:
 def lanes_to_state(lanes: Lanes) -> list[Bit]:
     """Converts lanes (5, 5, w) to a state vector (5 x 5 x w,)"""
     w = len(lanes[0][0])
-    state = const("0" * 5*5*w)
+    state = [lanes[0][0][0] for _ in range(5*5*w)]  # placeholder state
     for x in range(5):
         for y in range(5):
             state[w*(x+5*y) : w*(x+5*y) + w] = reverse_bytes(lanes[x][y])
@@ -50,7 +63,7 @@ def lanes_to_state(lanes: Lanes) -> list[Bit]:
 def state_to_lanes(state: list[Bit]) -> Lanes:
     """Converts a state vector (5 x 5 x w,) to lanes (5, 5, w)"""
     w = len(state) // (5 * 5)
-    lanes = get_empty_lanes(w)
+    lanes = get_empty_lanes(w, state[0])
     for x in range(5):
         for y in range(5):
             lanes[x][y] = reverse_bytes(state[w * (x + 5 * y) : w * (x + 5 * y) + w])
@@ -60,7 +73,7 @@ def state_to_lanes(state: list[Bit]) -> Lanes:
 # SHA3 operations
 def theta(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    result = get_empty_lanes(w)
+    result = get_empty_lanes(w, lanes[0][0][0])
     for x in range(5):
         for y in range(5):
             for z in range(w):
@@ -85,7 +98,7 @@ def rho_pi(lanes: Lanes) -> Lanes:
 
 def chi(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    result = get_empty_lanes(w)
+    result = get_empty_lanes(w, lanes[0][0][0])
     for y in range(5):
         for x in range(5):
             for z in range(w):
