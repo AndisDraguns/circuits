@@ -14,14 +14,15 @@ class Block[T]:
     """Represents a function call with its Signal inputs/outputs"""
     name: str
     path: str
-    inputs: OrderedSet[T]
-    outputs: OrderedSet[T]
     depth: int  # Nesting depth in the call tree
-    is_creator: bool  # True if this node is __init__ of the tracked T instance
+    inputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
+    outputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
+    # is_creator: bool  # True if this node is __init__ of the tracked T instance
     created: T | None = None  # Instance created by this node, if any
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
 
+    # Positioning
     bot: int = 0  # Bottom height of the node in the call tree (relative to parent.top)
     top: int = 0  # Top height of the node in the call tree (relative to self.bot)
     left: int = 0  # left position of the node in the call tree (relative to parent.left)
@@ -31,12 +32,18 @@ class Block[T]:
     y: int = 0  # Absolute y coordinate (bottom edge)
     max_leaf_depth: int = -1
 
+    # For visualizng color and block output
     formatter: Callable[[T], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
-    # highlight: bool = False  # Whether to highlight this node
-    # is_live: bool = False  # live = generates signals that are downstream from inputs
     tags: set[str] = field(default_factory=set[str])
+
+    # Output locations
+    ox: int = 0  # x coordinate of the output
+    oy: int = 0  # y coordinate of the output
+    inp_indices: list[int] = field(default_factory=list[int])
+    original: 'Block[T] | None' = None  # points to the original block (if this is a copy)
+    copies: dict[int, 'Block[T]'] = field(default_factory=dict[int, 'Block[T]'])  # y -> copy
 
 
     @property
@@ -110,7 +117,6 @@ class Block[T]:
             s += f"outdiff: '{self.outdiff}'\n"
         return s
     
-
     @classmethod
     def from_node(cls, root_node: CallNode[T]) -> 'Block[T]':
         node_to_block: dict[CallNode[T], Block[T]] = {}
@@ -118,31 +124,48 @@ class Block[T]:
             path = f"{n.name}-{n.count}"
             if n.parent is not None:
                 path = f"{node_to_block[n.parent].path}." + path
-            b = Block[T](n.name, path, n.inputs, n.outputs, n.depth, n.is_creator, n.created)
+            b = Block[T](n.name, path, n.depth, inputs=n.inputs, outputs=n.outputs, created=n.created)
             node_to_block[n] = b
             if n.parent:
                 b.parent = node_to_block[n.parent]
                 node_to_block[n.parent].children.append(b)
         return node_to_block[root_node]
 
+    def copy(self, ox: int) -> 'Block[T]':
+        """Creates a copy of the block and its children."""
+        original = self.original if self.original else self
+        b = Block[T]('copy', self.path, self.depth, original=original, oy=self.oy+1, ox=ox)
+        original.copies[self.oy+1] = b  # Add self to copies for the current height
+        return b
+    # def create_copy(self) -> 'Block[T]':
+    #     """Creates a copy of the block and its children."""
+    #     copy = Block[T](self.name, self.path, self.inputs, self.outputs, self.depth, self.created)
+    #     copy.left = self.left
+    #     copy.right = self.right
+    #     copy.top = self.top
+    #     copy.bot = self.bot
+    #     copy.levels = self.levels[:]
+    #     copy.tags = self.tags.copy()
+    #     copy.children = [child.create_copy() for child in self.children]
+    #     return copy
 
-    def highlight_differences(self, root2: 'Block[T]') -> None:
-        """
-        Highlights the differences between two call trees.
-        Sets 'highlight' flag in for each block that differs from the corresponding block in the other tree.
-        """
-        gen1 = walk_generator(self)
-        gen2 = walk_generator(root2)
-        for val1, val2 in zip(gen1, gen2):
-            node1, node2 = val1[0], val2[0]
-            assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
-            if node1.out_str != node2.out_str:
-                node1.tags.add('different')
-                # node1.highlight = True
-                for val1, val2 in zip(node1.outputs, node2.outputs):
-                    val1_str = self.formatter(val1)
-                    val2_str = self.formatter(val2)
-                    node1.outdiff += ' ' if val1_str==val2_str else val2_str
+    # def highlight_differences(self, root2: 'Block[T]') -> None:
+    #     """
+    #     Highlights the differences between two call trees.
+    #     Sets 'highlight' flag in for each block that differs from the corresponding block in the other tree.
+    #     """
+    #     gen1 = walk_generator(self)
+    #     gen2 = walk_generator(root2)
+    #     for val1, val2 in zip(gen1, gen2):
+    #         node1, node2 = val1[0], val2[0]
+    #         assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
+    #         if node1.out_str != node2.out_str:
+    #             node1.tags.add('different')
+    #             # node1.highlight = True
+    #             for val1, val2 in zip(node1.outputs, node2.outputs):
+    #                 val1_str = self.formatter(val1)
+    #                 val2_str = self.formatter(val2)
+    #                 node1.outdiff += ' ' if val1_str==val2_str else val2_str
 
 
 
@@ -159,31 +182,31 @@ def get_lca_children_split(x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]
     raise ValueError("x and y are on the same path to root")
 
 
-def update_ancestor_heights(n: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
+def update_ancestor_heights(b: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
     """
-    On return of a block n, set blocks's height to be after its inputs, update ancestor heights if necessary.
+    On return of a block b, set blocks's height to be after its inputs, update ancestor heights if necessary.
     For each input, its creator block g is located. 
     """
-    for inp in n.inputs:
+    for inp in b.inputs:
         if inp not in instance_to_block:
-            n.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            b.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
             continue
         g = instance_to_block[inp]
-        n_ancestor, g_ancestor = get_lca_children_split(n, g)
+        b_ancestor, g_ancestor = get_lca_children_split(b, g)
         if 'live' in g_ancestor.tags:
-            n.tags.add('live')
-        if n_ancestor.bot < g_ancestor.top:  # current block must be above the parent block
-            height_change = g_ancestor.top - n_ancestor.bot
-            n_ancestor.bot += height_change
-            n_ancestor.top += height_change
+            b.tags.add('live')
+        if b_ancestor.bot < g_ancestor.top:  # current block must be above the parent block
+            height_change = g_ancestor.top - b_ancestor.bot
+            b_ancestor.bot += height_change
+            b_ancestor.top += height_change
 
     # TODO: can we update max shifting parent instead of fully looping over all inputs?
     # TODO: add copies if input creators are distant
 
 
-def process_creator(b: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
-    """Process the creator node"""
-    assert b.is_creator and b.created is not None, f"Expected creator node, got {b.name}"
+def process_creator_block(b: Block[T], instance_to_block: dict[T, Block[T]]) -> None:
+    """Process the creator block"""
+    assert b.created is not None, f"Expected creator block, got {b.name}"
     instance = b.created
     assert instance not in instance_to_block, f"b already in instance_to_block, b={b}"
     instance_to_block[instance] = b
@@ -196,7 +219,7 @@ def set_top(node: Block[T]) -> None:
     if not node.children:
         return
     block_height = max([c.top for c in node.children])
-    if node.is_creator:
+    if node.created:
         block_height = 1
     node.top = node.bot + block_height
 
@@ -224,35 +247,76 @@ def walk_generator(node: Block[T], order: Literal['call', 'return', 'both', 'eit
         yield node, 'return'
 
 
-def post_process_trace(root: Block[T]) -> Block[T]:
-    """Processes the call tree"""
-    instance_to_block: dict[T, Block[T]] = {}
-    for b, _ in walk_generator(root, order='return'):
-        b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
-        b.out_str = "".join([b.formatter(out) for out in b.outputs])
-
-        # The following must be on return
-        # Sets node's coordinates
-        if b.is_creator:
-            process_creator(b, instance_to_block)
-        update_ancestor_heights(b, instance_to_block)
-        set_top(b)
-        set_left_right(b)
-        if any(['live' in c.tags for c in b.children]):
-            b.tags.add('live')
-        if 'live' not in b.tags:
-            b.tags.add('constant')
-
-        if b.parent is not None:
-            assert not b.parent.is_creator, "__init__ of the tracked type should be added to skip set"
-    
-    # Now that .left and .bot are finalized, we can  set absolute coordinates
+def get_levels(root: Block[T]) -> list[OrderedSet[T]]:
+    """Gets the instances created in the tree sorted into levels based in their height"""
+    levels: list[OrderedSet[T]] = [OrderedSet() for _ in range(root.top + 1)]  # Initialize levels list
+    levels[0] = root.inputs
     for b, _ in walk_generator(root):
-        if b.parent is not None:
-            b.x = b.left + b.parent.x
-            b.y = b.bot + b.parent.y
+        if b.created is not None:
+            levels[b.y+1].add(b.created)
+    return levels
 
-    return root
+# from typing import NamedTuple
+# @dataclass
+# class Location[T]:
+#     x: int
+#     y: int
+#     instance: T
+#     block: Block[T]
+#     copies: dict[int, 'Location[T]'] = field(default_factory=dict[int, 'Location[T]'])
+#     def __post_init__(self):
+#         self.copies[self.y] = self  # Add self to copies for the current height
+
+
+def add_copies(root: Block[T]) -> list[list[Block[T]]]:
+    """Gets the instances required in the tree sorted into levels based in their height"""
+    # required: list[OrderedSet[T]] = [OrderedSet() for _ in range(root.top + 1)]
+    # instance_to_location: dict[T, Location[T]] = {}
+    levels = get_levels(root)
+
+    instance_to_block: dict[T, Block[T]] = {}
+    for b, _ in walk_generator(root):
+        if b.created:
+            instance_to_block[b.created] = b
+
+    for i, level in enumerate(levels):
+        for j, instance in enumerate(level):
+            if instance not in instance_to_block:
+                instance_to_block[instance] = Block[T]('input', f'input-{j}', -1, created=instance)
+            b = instance_to_block[instance]
+            b.ox = j  # Set x coordinate of the output
+            b.oy = i  # Set y coordinate of the output
+            b.copies[i] = b  # Add self to copies for the current height
+
+    for level in levels:
+        # [instance_to_block[inst].path.split('.')[-4] for inst in level]
+        print(len(level))
+    print("\n")
+
+    copies: list[list[Block[T]]] = [[] for _ in range(root.top + 1)]
+    for b, _ in walk_generator(root):
+        if b.name == 'gate':
+            for inp_instance in b.inputs:
+                inp = instance_to_block[inp_instance]
+                assert inp.oy <= b.y, f"Instance required before it is created, {inp.oy}<={b.y}, inp:{inp.path}, b:{b.path}"
+                prev_height = b.y
+                inp_height = inp.oy
+                if inp_height == prev_height:
+                    b.inp_indices.append(inp.ox)
+                elif inp_height < prev_height:
+                    if prev_height in inp.copies:
+                        b.inp_indices.append(inp.copies[prev_height].ox)
+                    else:
+                        curr_height = inp.oy+1
+                        while prev_height not in inp.copies:
+                            if curr_height not in inp.copies:
+                                last_copy = inp.copies[curr_height-1]
+                                copy_block = last_copy.copy(ox=len(levels[curr_height])+1)
+                                assert copy_block.original is not None and copy_block.original.created is not None
+                                levels[curr_height].add(copy_block.original.created)
+                                copies[curr_height].append(copy_block)
+                            curr_height += 1
+    return copies
 
 
 from typing import Any, Literal
@@ -269,8 +333,52 @@ class Tracer[T]:
         ftracer = FTracer[T](Signal, self.skip, self.collapse)
         node = ftracer.run(func, *args, **kwargs)
         b = Block[T].from_node(node)
-        post_process_trace(b)
+        self.postprocessing(b)
         return b.unwrapped
+
+    def postprocessing(self, root: Block[T]) -> Block[T]:
+        """Processes the call tree"""
+        instance_to_block: dict[T, Block[T]] = {}
+        for b, _ in walk_generator(root, order='return'):
+            # Set coordinates
+            if b.created:
+                process_creator_block(b, instance_to_block)
+            update_ancestor_heights(b, instance_to_block)
+            set_top(b)
+            set_left_right(b)
+            
+            # Set tags and info
+            b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
+            b.out_str = "".join([self.formatter(out) for out in b.outputs])
+            if any(['live' in c.tags for c in b.children]):
+                b.tags.add('live')
+            if 'live' not in b.tags:
+                b.tags.add('constant')
+            assert b.parent is None or not b.parent.created, "type T __init__ subcalls should be added to skip set"
+        
+        # Now that .left and .bot are finalized, set absolute coordinates
+        for b, _ in walk_generator(root):
+            if b.parent is not None:
+                b.x = b.left + b.parent.x
+                b.y = b.bot + b.parent.y
+
+        return root
+
+
+    def mark_differences(self, root1: Block[T], root2: Block[T]) -> None:
+        """Highlights the differences between two block trees"""
+        for v1, v2 in zip(walk_generator(root1), walk_generator(root2)):
+            b1, b2 = v1[0], v2[0]
+            assert b1.path == b2.path, f"Block paths do not match: {b1.path} != {b2.path}"
+            if b1.out_str != b2.out_str:
+                b1.tags.add('different')
+                b2.tags.add('different')
+                outs1 = [self.formatter(out) for out in b1.outputs]
+                outs2 = [self.formatter(out) for out in b2.outputs]
+                for out1, out2 in zip(outs1, outs2):
+                    diff = ' ' if out1==out2 else out2
+                    b1.outdiff += diff
+                    b2.outdiff += diff
 
 
 # Example usage
@@ -283,4 +391,8 @@ if __name__ == '__main__':
     tracer = Tracer[Bit]()
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)
-    print(b1)
+    # print(b1)
+    copies = add_copies(b1)
+    for level in copies[2:]:
+        path = [b.path.split('.')[-4] for b in level]
+        print(len(level), path)

@@ -67,7 +67,7 @@ class VisualConfig:
     constant_t: Color = Color(90, 0, 0)
     copy_t: Color = Color(-90, 0, 0)
     small_t: Color = Color(0, 0, -80)
-    hover_t: Color = Color(5, 0, -10)
+    hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50
 
@@ -250,7 +250,7 @@ if __name__ == '__main__':
     b1 = tracer.run(f, m=msg1, k=k)
     msg2 = k.format("Test", clip=True)
     b2 = tracer.run(f, m=msg2, k=k)
-    b2.highlight_differences(b1)
+    tracer.mark_differences(b1, b2)
     visualize(b2)
 
 
