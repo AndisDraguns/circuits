@@ -22,14 +22,11 @@ class CallNode[T]:
     children: list['CallNode[T]'] = field(default_factory=list['CallNode[T]'])
     fn_counts: dict[str, int] = field(default_factory=dict[str, int])  # child fn name -> # direct calls in self
     skip: bool = False
-    # is_creator: bool = False  # True if this node is __init__ of the tracked T instance
     created: T | None = None  # Instance created by this node, if any
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
         self.fn_counts[fn_name] = self.fn_counts.get(fn_name, 0) + 1
         child = CallNode(name=fn_name, count=self.fn_counts[fn_name]-1, parent=self, depth=self.depth+1)
-        if fn_name == 'round':
-            print('round counts:', self.fn_counts[fn_name])
         self.children.append(child)
         return child
 
