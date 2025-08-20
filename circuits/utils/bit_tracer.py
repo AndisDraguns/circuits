@@ -8,8 +8,8 @@ from circuits.utils.ftraceviz import Tracer, visualize
 @dataclass
 class BitTracer(Tracer[Bit]):
     use_defaults: bool = False
-    # formatter: Callable[[Bit], str] = lambda x: str(int(x.activation))
     def __post_init__(self):
+        self.tracked_type = Bit
         self.formatter = lambda x: str(int(x.activation))
         if self.use_defaults:
             c = {'__init__', '__post_init__', '<lambda>'}

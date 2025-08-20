@@ -29,7 +29,7 @@ class Block[T]:
     depth: int  # Nesting depth in the call tree
     inputs: OrderedSet[Flow[T]] = field(default_factory=OrderedSet[Flow[T]])
     outputs: OrderedSet[Flow[T]] = field(default_factory=OrderedSet[Flow[T]])
-    created: Flow[T] | None = None  # Instance created by this node, if any
+    creation: Flow[T] | None = None  # Flow created by this node, if any
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
 
@@ -51,11 +51,8 @@ class Block[T]:
 
     # Copying
     copy_levels: dict[int, list['Block[T]']] = field(default_factory=dict[int, list['Block[T]']])  # level -> blocks to copy
-    # ox: int = 0  # x coordinate of the output
-    # oy: int = 0  # y coordinate of the output
-    # inp_indices: list[int] = field(default_factory=list[int])
-    # original: 'Block[T] | None' = None  # points to the original block (if this is a copy)
-    # copies: dict[int, 'Block[T]'] = field(default_factory=dict[int, 'Block[T]'])  # y -> copy
+    is_flowmaker: bool = False  # block either is __init__ of T or a copy block
+    flavour: Literal['function', 'creator', 'copy', 'input'] = 'function'
 
 
     @property
@@ -130,7 +127,7 @@ class Block[T]:
         return s
 
     @classmethod
-    def from_node(cls, root_node: CallNode[T]) -> 'Block[T]':
+    def from_root_node(cls, root_node: CallNode[T]) -> 'Block[T]':
         node_to_block: dict[CallNode[T], Block[T]] = {}
         for n in node_walk_generator(root_node, order='call'):
             path = ""
@@ -143,14 +140,15 @@ class Block[T]:
                     path += f"-{n.count}"
             inputs = OrderedSet([Flow[T](inp) for inp in n.inputs])
             outputs = OrderedSet([Flow[T](out) for out in n.outputs])
-            created = None
-            if n.created is not None:
-                created = Flow[T](n.created)
-            b = cls(n.name, path, n.depth, inputs, outputs, created=created)
+            b = cls(n.name, path, n.depth, inputs, outputs)
+            if n.creation is not None:
+                b.creation = Flow[T](n.creation, creator=b)
+                b.flavour = 'creator'
             node_to_block[n] = b
             if n.parent:
                 b.parent = node_to_block[n.parent]
                 b.parent.children.append(b)
+            assert b.parent is None or not b.parent.creation, "type T __init__ subcalls should be added to skip set"
         return node_to_block[root_node]
 
 
@@ -211,24 +209,24 @@ def update_ancestor_heights(b: Block[T]) -> None:
 
 def process_creator_block(b: Block[T]) -> None:
     """Process the creator block"""
-    assert b.created is not None, f"Expected creator block, got {b.name}"
-    if b.created.creator is None:
-        b.created.creator = b
+    assert b.creation is not None, f"Expected creator block, got {b.name}"
+    if b.creation.creator is None:
+        b.creation.creator = b
     else:
         if not 'copy' in b.tags:
-            assert b.path == b.created.creator.path
+            assert b.path == b.creation.creator.path
     b.top = b.bot + 1  # Set top height of b to 1, since it is the only leaf node
     b.right = b.left + 1  # Set the right position of b to 1, since it is the only leaf node
 
 
-def set_top(node: Block[T]) -> None:
-    """Sets the top height of the node based on its children"""
-    if not node.children:
+def set_top(b: Block[T]) -> None:
+    """Sets the top height of the block based on its children"""
+    if not b.children:
         return
-    block_height = max([c.top for c in node.children])
-    if node.created:
+    block_height = max([c.top for c in b.children])
+    if b.creation is not None:
         block_height = 1
-    node.top = node.bot + block_height
+    b.top = b.bot + block_height
 
 
 def set_left_right(b: Block[T]) -> None:
@@ -285,8 +283,8 @@ def get_missing_inputs(root: Block[T]) -> None:
         required[b][b.h] |= b.outputs
         for c in b.children:
             if b.name == 'gate' and c.name == '__init__':
-                assert c.created
-                available[b][c.top].add(c.created)  # since __init__ does not have outputs
+                assert c.creation
+                available[b][c.top].add(c.creation)  # since __init__ does not have outputs
             available[b][c.top] |= c.outputs
             required[b][c.bot] |= c.inputs
         # Check if all required are available
@@ -319,20 +317,43 @@ def get_missing_inputs(root: Block[T]) -> None:
                 name += f"-{i}"
             copies_block = Block[T](name, b.path+f'.{name}', b.depth+1, parent=b)
             for j, c in enumerate(copies):
-                assert c.created is not None
+                assert c.creation is not None
                 c_name = "copy"
                 if len(copies) > 1:
                     c_name += f"-{j}"
                 new_block = Block[T](c_name, copies_block.path+f'.{c_name}', copies_block.depth+1, parent=copies_block,
-                                     inputs=OrderedSet([c.created]),
-                                     outputs=OrderedSet([c.created]))
+                                     inputs=OrderedSet([c.creation]),
+                                     outputs=OrderedSet([c.creation]))
                 new_block.tags.add('copy')
+                new_block.flavour = 'copy'
                 copies_block.children.append(new_block)
-                copies_block.inputs.add(c.created)
-                copies_block.outputs.add(c.created)
+                copies_block.inputs.add(c.creation)
+                copies_block.outputs.add(c.creation)
             copies_block.tags.add('copy')
             b.children.append(copies_block)
             # TODO: test with copying across several layers. Possibly this puts all copies at .y level
+
+
+
+def create_input_blocks(root: Block[T]) -> list[Block[T]]:
+    inp_blocks: list[Block[T]] = []
+    for j, flow in enumerate(root.children[0].inputs):
+        b = Block[T]('input', f'input[{j}]', -1, creation=flow, tags={'input'}, flavour='input')
+        inp_blocks.append(b)
+    return inp_blocks
+
+
+def set_flow_creator_for_io_of_each_block(root: Block[T], inp_blocks: list[Block[T]]) -> None:
+    to_block: dict[T, Block[T]] = {}
+    for inp_b in inp_blocks:
+        assert inp_b.creation is not None
+        inp_b.creation.creator = inp_b
+        to_block[inp_b.creation.data] = inp_b
+    for b in walk_generator(root, 'return'):
+        if b.creation:
+            to_block[b.creation.data] = b
+        for flow in b.inputs | b.outputs:
+            flow.creator = to_block[flow.data]
 
 
 from typing import Any, Literal
@@ -340,15 +361,17 @@ from collections.abc import Callable, Generator
 from circuits.utils.ftrace import FTracer
 @dataclass
 class Tracer[T]:
+    tracked_type: type[T] | None = None
     skip: set[str] = field(default_factory=set[str])
     collapse: set[str] = field(default_factory=set[str])
     formatter: Callable[[T], str] = lambda x: str(x)
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block[T]:
-        from circuits.neurons.core import Signal
-        ftracer = FTracer[T](Signal, self.skip, self.collapse)
+        # from circuits.neurons.core import Signal
+        assert self.tracked_type is not None
+        ftracer = FTracer[T](self.tracked_type, self.skip, self.collapse)
         node = ftracer.run(func, *args, **kwargs)
-        b = Block[T].from_node(node)
+        b = Block[T].from_root_node(node)
         self.postprocessing(b)
         self.postprocessing(b)
         self.postprocessing(b)
@@ -357,10 +380,11 @@ class Tracer[T]:
         b = b.unwrapped
         return b
 
+
     def postprocessing(self, root: Block[T]) -> Block[T]:
         """Processes the call tree"""
-        # Reset if postprocessing was already called
         for b in walk_generator(root):
+            # Reset if postprocessing was already called
             b.bot = 0
             b.top = 0
             b.left = 0
@@ -371,35 +395,26 @@ class Tracer[T]:
             b.max_leaf_depth = -1
             b.tags.discard('missing')
 
-        # Create instance to block mapping, including disconnected blocks for root inputs
-        instance_to_block: dict[T, Block[T]] = {}
-        for j, flow in enumerate(root.children[0].inputs):
-            # flow.height = -1
-            # flow.index = j
-            flow.creator = Block[T]('input', f'input[{j}]', -1, created=flow, tags={'input'})
-            instance_to_block[flow.data] = flow.creator
-
+        inp_blocks = create_input_blocks(root)
+        set_flow_creator_for_io_of_each_block(root, inp_blocks)
         for b in walk_generator(root, order='return'):
-            # Set coordinates
-            if b.created:
-                process_creator_block(b)
-                instance_to_block[b.created.data] = b
-            for flow in b.inputs | b.outputs:
-                flow.creator = instance_to_block[flow.data]
-            if 'copy' in b.tags:
+
+            # Set creator/copy size to 1x1
+            if b.flavour in {'creator', 'copy'}:
                 b.top = b.bot + 1
                 b.right = b.left + 1
+
+            # Ensure b comes after its inputs are created
             update_ancestor_heights(b)
-            set_top(b)
+
+            # Ensure correct top height
+            if b.children:
+                b.top = b.bot + max([c.top for c in b.children])
+
             set_left_right(b)
-            
-            # Set tags and info
-            b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
-            b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
-            if any(['constant' not in c.tags for c in b.children]):
-                b.tags.discard('constant')
-            assert b.parent is None or not b.parent.created, "type T __init__ subcalls should be added to skip set"
-        
+
+            self.set_formatting_info(b)
+
         # Now that .left and .bot are finalized, set absolute coordinates
         for b in walk_generator(root):
             if b.parent is not None:
@@ -424,6 +439,13 @@ class Tracer[T]:
                     b2.outdiff += diff
 
 
+    def set_formatting_info(self, b: Block[T]) -> None:
+        b.max_leaf_depth = max([c.max_leaf_depth for c in b.children])+1 if b.children else 0
+        b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
+        if any(['constant' not in c.tags for c in b.children]):
+            b.tags.discard('constant')
+
+
 # Example usage
 if __name__ == '__main__':
     from circuits.neurons.core import Bit
@@ -431,7 +453,7 @@ if __name__ == '__main__':
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = Tracer[Bit](collapse = {'__init__', 'outgoing', 'step'})
+    tracer = Tracer[Bit](Bit, collapse = {'__init__', 'outgoing', 'step'})
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)
 
@@ -441,6 +463,6 @@ if __name__ == '__main__':
 #     levels: list[OrderedSet[T]] = [OrderedSet() for _ in range(root.top + 1)]  # Initialize levels list
 #     levels[0] = root.inputs
 #     for b in walk_generator(root):
-#         if b.created is not None:
-#             levels[b.y+1].add(b.created)
+#         if b.creation is not None:
+#             levels[b.y+1].add(b.creation)
 #     return levels

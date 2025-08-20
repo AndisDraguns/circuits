@@ -248,7 +248,7 @@ if __name__ == '__main__':
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = Tracer[Bit]()
+    tracer = Tracer[Bit](Bit)
    
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)
