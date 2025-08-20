@@ -65,7 +65,7 @@ class VisualConfig:
     depth_t: Color = Color(2, 0, -8)
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
-    copy_t: Color = Color(-90, 0, 0)
+    copy_t: Color = Color(-200, 0, 0)
     missing_t: Color = Color(-150, 0, 0)
     small_t: Color = Color(0, 0, -80)
     hover_t: Color = Color(5, 0, -20)

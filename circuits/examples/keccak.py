@@ -26,19 +26,6 @@ def copy_lanes(lanes: Lanes) -> Lanes:
             new_lanes[x][y] = lanes[x][y]
     return new_lanes
 
-# def get_empty_lanes(w: int) -> Lanes:
-#     """Returns lanes with placeholder Bit values.
-#     These values will never be used and will all be overwritten."""
-#     return [[const("0" * w) for _ in range(5)] for _ in range(5)]
-
-# def copy_lanes(lanes: Lanes) -> Lanes:
-#     w = len(lanes[0][0])
-#     new_lanes = get_empty_lanes(w)
-#     for x in range(5):
-#         for y in range(5):
-#             new_lanes[x][y] = lanes[x][y]
-#     return new_lanes
-
 
 def reverse_bytes(bits: list[Bit]) -> list[Bit]:
     """Reverse byte order while preserving bit order in each byte."""
@@ -114,20 +101,6 @@ def iota(lanes: Lanes, rc: str) -> Lanes:
         if bit == "1":
             result[0][0][z] = not_(lanes[0][0][z])
     return result
-
-
-# def iota(lanes: Lanes, rc: str) -> Lanes:
-#     """Applies the round constant to the first lane. Copies unmodified bits"""
-#     w = len(lanes[0][0])
-#     result = copy_lanes(lanes)
-#     for y in range(5):
-#         for x in range(5):
-#             for z in range(w):
-#                 if rc[z] == "1":
-#                     result[0][0][z] = not_(lanes[0][0][z])
-#                 else:
-#                     result[x][y][z] = copy(lanes[x][y][z])
-#     return result
 
 
 def get_round_constants(b: int, n: int) -> list[str]:
@@ -231,7 +204,7 @@ class Keccak:
 
 
     def msg_to_state(self, msg: list[Bit]) -> State:
-        # msg (msg_len)
+        # msg size (msg_len)
         assert len(msg) == self.msg_len, f"Input length {len(msg)} does not match msg_len {self.msg_len}"
         sep = const(format(self.suffix, "08b"))
         cap = const("0" * self.c)
@@ -268,14 +241,14 @@ class Keccak:
 
     def crop_digest(self, hashed: State) -> list[Bit]:
         """Returns the digest of the hashed state"""
-        # hashed (b)
+        # hashed size (b)
         digest = hashed[:self.d]
         return digest  # (d)
     
 
     def bitlist_to_digest(self, bitlist: list[Bit]) -> list[Bit]:
         """Returns the digest of the bitlist"""
-        # bitlist (<=msg_len)
+        # bitlist size (<=msg_len)
         msg = self.bitlist_to_msg(bitlist)  # (msg_len)
         state = self.msg_to_state(msg)  # (b)
         hashed = self.hash_state(state)  # (b)
@@ -284,24 +257,23 @@ class Keccak:
 
 
     # Function for easier operating with Bits:
-
     def format(self, phrase: str, clip: bool = False) -> Bits:
         """Formats a string to Bits message"""
-        # phrase (<=msg_len)
+        # phrase size (<=msg_len)
         bitlist = Bits(phrase).bitlist
         if clip:
             bitlist = bitlist[:self.msg_len]
         msg = self.bitlist_to_msg(bitlist)
-        return Bits(msg) # (msg_len)
+        return Bits(msg)  # (msg_len)
     
 
     def digest(self, msg_bits: Bits) -> Bits:
         """Returns the digest Bits of the hashed message Bits"""
-        # msg_bits (msg_len)
+        # msg_bits size (msg_len)
         state = self.msg_to_state(msg_bits.bitlist)  # (b)
         hashed = self.hash_state(state)  # (b)
         digest = self.crop_digest(hashed)  # (d)
-        return Bits(digest)
+        return Bits(digest)  # (d)
 
 
 def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:

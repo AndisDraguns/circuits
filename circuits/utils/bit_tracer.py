@@ -32,5 +32,5 @@ if __name__ == '__main__':
     b1 = tracer.run(f, m=msg1, k=k)
     msg2 = k.format("Test", clip=True)
     b2 = tracer.run(f, m=msg2, k=k)
-    tracer.mark_differences(b1, b2)
+    # tracer.mark_differences(b1, b2)
     visualize(b2)

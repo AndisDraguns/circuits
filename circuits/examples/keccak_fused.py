@@ -61,9 +61,9 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
 
     # rounds (chi, iota, theta, rho, pi)
     for round in range(n - 1):
-        and_bits = get_empty_lanes(w)
-        xor_bits = get_empty_lanes(w)
-        lanes_tmp = get_empty_lanes(w)
+        and_bits = get_empty_lanes(w, lanes[0][0][0])
+        xor_bits = get_empty_lanes(w, lanes[0][0][0])
+        lanes_tmp = get_empty_lanes(w, lanes[0][0][0])
 
         # operation 1 - inhib gates
         for y in range(5):

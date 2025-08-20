@@ -17,7 +17,6 @@ class Block[T]:
     depth: int  # Nesting depth in the call tree
     inputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
     outputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
-    # is_creator: bool  # True if this node is __init__ of the tracked T instance
     created: T | None = None  # Instance created by this node, if any
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
@@ -36,7 +35,6 @@ class Block[T]:
     formatter: Callable[[T], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
-    # tags: set[str] = field(default_factory=set[str])
     tags: set[str] = field(default_factory=lambda: {'constant'})
 
     # Output locations
@@ -45,6 +43,8 @@ class Block[T]:
     inp_indices: list[int] = field(default_factory=list[int])
     original: 'Block[T] | None' = None  # points to the original block (if this is a copy)
     copies: dict[int, 'Block[T]'] = field(default_factory=dict[int, 'Block[T]'])  # y -> copy
+
+    copy_levels: dict[int, list['Block[T]']] = field(default_factory=dict[int, list['Block[T]']])  # level -> blocks to copy
 
 
     @property
@@ -117,14 +117,19 @@ class Block[T]:
         if self.outdiff:
             s += f"outdiff: '{self.outdiff}'\n"
         return s
-    
+
     @classmethod
     def from_node(cls, root_node: CallNode[T]) -> 'Block[T]':
         node_to_block: dict[CallNode[T], Block[T]] = {}
         for n, _ in node_walk_generator(root_node, order='call'):
             path = ""
             if n.parent is not None:
-                path = f"{node_to_block[n.parent].path}." + f"{n.name}-{n.count}"
+                path = f"{node_to_block[n.parent].path}"
+                if n.parent.parent is not None:
+                    path += "."
+                path += f"{n.name}" 
+                if n.parent.fn_counts[n.name] > 1:  # exclude count if function is only called once
+                    path += f"-{n.count}"
             b = Block[T](n.name, path, n.depth, inputs=n.inputs, outputs=n.outputs, created=n.created)
             node_to_block[n] = b
             if n.parent:
@@ -133,41 +138,34 @@ class Block[T]:
         return node_to_block[root_node]
 
     def copy(self, ox: int) -> 'Block[T]':
-        """Creates a copy of the block and its children."""
+        """Creates a copy of the block"""
         original = self.original if self.original else self
         b = Block[T]('copy', self.path, self.depth, original=original, oy=self.oy+1, ox=ox)
         original.copies[self.oy+1] = b  # Add self to copies for the current height
         return b
-    # def create_copy(self) -> 'Block[T]':
-    #     """Creates a copy of the block and its children."""
-    #     copy = Block[T](self.name, self.path, self.inputs, self.outputs, self.depth, self.created)
-    #     copy.left = self.left
-    #     copy.right = self.right
-    #     copy.top = self.top
-    #     copy.bot = self.bot
-    #     copy.levels = self.levels[:]
-    #     copy.tags = self.tags.copy()
-    #     copy.children = [child.create_copy() for child in self.children]
-    #     return copy
 
-    # def highlight_differences(self, root2: 'Block[T]') -> None:
-    #     """
-    #     Highlights the differences between two call trees.
-    #     Sets 'highlight' flag in for each block that differs from the corresponding block in the other tree.
-    #     """
-    #     gen1 = walk_generator(self)
-    #     gen2 = walk_generator(root2)
-    #     for val1, val2 in zip(gen1, gen2):
-    #         node1, node2 = val1[0], val2[0]
-    #         assert node1.path == node2.path, f"Node names do not match: {node1.path} != {node2.path}"
-    #         if node1.out_str != node2.out_str:
-    #             node1.tags.add('different')
-    #             # node1.highlight = True
-    #             for val1, val2 in zip(node1.outputs, node2.outputs):
-    #                 val1_str = self.formatter(val1)
-    #                 val2_str = self.formatter(val2)
-    #                 node1.outdiff += ' ' if val1_str==val2_str else val2_str
 
+def lowest_common_ancestor(x: Block[T], y: Block[T]) -> Block[T]:
+    x_path = x.fpath
+    y_path = y.fpath
+    for i in range(min(len(x_path), len(y_path))):
+        if x_path[i] != y_path[i]:
+            return x_path[i-1]  # Found the first mismatch
+    # x and y are on the same path to root:
+    if len(x_path) < len(y_path):
+        return x_path[-1]
+    else:
+        return y_path[-1]
+
+
+def get_path_between_blocks(x: Block[T], y: Block[T]) -> tuple[Block[T], ...]:
+    """Gets path from x to y"""
+    lca = lowest_common_ancestor(x, y)
+    lca_to_x = x.fpath[x.fpath.index(lca):]
+    lca_to_y = y.fpath[y.fpath.index(lca):]
+    x_to_lca = lca_to_x[::-1]
+    x_to_y = x_to_lca[:-1] + lca_to_y
+    return tuple(x_to_y)
 
 
 def get_lca_children_split(x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]]:
@@ -190,7 +188,7 @@ def update_ancestor_heights(b: Block[T], instance_to_block: dict[T, Block[T]]) -
     """
     for inp in b.inputs:
         if inp not in instance_to_block:
-            # b.tags.add('live')  # no trace -> input created outside of fn -> node is live (downstream from inputs)
+            # input created outside of the root fn -> node is downstream from inputs, not constant
             b.tags.discard('constant')
             continue
         g = instance_to_block[inp]
@@ -201,7 +199,6 @@ def update_ancestor_heights(b: Block[T], instance_to_block: dict[T, Block[T]]) -
             height_change = g_ancestor.top - b_ancestor.bot
             b_ancestor.bot += height_change
             b_ancestor.top += height_change
-
     # TODO: can we update max shifting parent instead of fully looping over all inputs?
     # TODO: add copies if input creators are distant
 
@@ -210,10 +207,13 @@ def process_creator_block(b: Block[T], instance_to_block: dict[T, Block[T]]) -> 
     """Process the creator block"""
     assert b.created is not None, f"Expected creator block, got {b.name}"
     instance = b.created
-    assert instance not in instance_to_block, f"b already in instance_to_block, b={b}"
-    instance_to_block[instance] = b
-    b.top += 1  # Set top height of b to 1, since it is the only leaf node
-    b.right += 1  # Set the right position of b to 1, since it is the only leaf node
+    # assert instance not in instance_to_block, f"b already in instance_to_block, b={b}"
+    if instance not in instance_to_block:
+        instance_to_block[instance] = b
+    else:
+        assert 'copy' in b.tags
+    b.top = b.bot + 1  # Set top height of b to 1, since it is the only leaf node
+    b.right = b.left + 1  # Set the right position of b to 1, since it is the only leaf node
 
 
 def set_top(node: Block[T]) -> None:
@@ -258,93 +258,91 @@ def get_levels(root: Block[T]) -> list[OrderedSet[T]]:
             levels[b.y+1].add(b.created)
     return levels
 
-# from typing import NamedTuple
-# @dataclass
-# class Location[T]:
-#     x: int
-#     y: int
-#     instance: T
-#     block: Block[T]
-#     copies: dict[int, 'Location[T]'] = field(default_factory=dict[int, 'Location[T]'])
-#     def __post_init__(self):
-#         self.copies[self.y] = self  # Add self to copies for the current height
+
+# def add_copies(root: Block[T]) -> list[list[Block[T]]]:
+#     """Gets the instances required in the tree sorted into levels based in their height"""
+#     levels = get_levels(root)
+
+#     instance_to_block: dict[T, Block[T]] = {}
+#     for b, _ in walk_generator(root):
+#         if b.created:
+#             instance_to_block[b.created] = b
+
+#     for i, level in enumerate(levels):
+#         for j, instance in enumerate(level):
+#             if instance not in instance_to_block:
+#                 instance_to_block[instance] = Block[T]('input', f'input-{j}', -1, created=instance)
+#             b = instance_to_block[instance]
+#             b.ox = j  # Set x coordinate of the output
+#             b.oy = i  # Set y coordinate of the output
+#             b.copies[i] = b  # Add self to copies for the current height
+#     # TODO: Idea:
+#     # get path from required to creator
+#     # make a leveled path lpath - i.e. each lpath el has y decreased by 1
+#     # that is - skip el that do not descend; and make several el when dropping within same block
+#     # copy tree? from creator to required blocks
+
+#     copies: list[list[Block[T]]] = [[] for _ in range(root.top + 1)]
+#     for b, _ in walk_generator(root):
+#         if b.name == 'gate':
+#             for inp_instance in b.inputs:
+#                 inp = instance_to_block[inp_instance]
+#                 assert inp.oy <= b.y, f"Instance required before it is created, {inp.oy}<={b.y}, inp:{inp.path}, b:{b.path}"
+#                 prev_height = b.y
+#                 inp_height = inp.oy
+#                 if inp_height == prev_height:
+#                     b.inp_indices.append(inp.ox)
+#                 elif inp_height < prev_height:
+#                     if prev_height in inp.copies:
+#                         b.inp_indices.append(inp.copies[prev_height].ox)
+#                     else:
+#                         curr_height = inp.oy+1
+#                         while prev_height not in inp.copies:
+#                             if curr_height not in inp.copies:
+#                                 last_copy = inp.copies[curr_height-1]
+#                                 copy_block = last_copy.copy(ox=len(levels[curr_height])+1)
+#                                 assert copy_block.original is not None and copy_block.original.created is not None
+#                                 levels[curr_height].add(copy_block.original.created)
+#                                 copies[curr_height].append(copy_block)
+#                             curr_height += 1
+#     return copies
 
 
-def add_copies(root: Block[T]) -> list[list[Block[T]]]:
-    """Gets the instances required in the tree sorted into levels based in their height"""
-    levels = get_levels(root)
+def get_missing_locations(missing_b: Block[T], level: int, creator: Block[T], available: dict[Block[T], list[OrderedSet[T]]]) -> set[Block[T]]:
+    missing_to_root = iter(missing_b.fpath[::-1])
+    # missing_locations: list[tuple[Block[T], int]] = []  # block and height
+    # print(f"Processing {missing_b.path}")
+    curr_height = missing_b.y + level - 0
+    creator_height = creator.y + creator.h
+    curr_block = next(missing_to_root)
+    blocks_with_copies: set[Block[T]] = set()
+    for height in reversed(range(creator_height, curr_height)):
+        while curr_block.y > height:
+            curr_block = next(missing_to_root)
+        if height >= curr_block.y:
+            if height not in curr_block.copy_levels:
+                curr_block.copy_levels[height] = []
+            curr_block.copy_levels[height].append(creator)
+            blocks_with_copies.add(curr_block)
+            # print(f"Adding {curr_block.path}")
+            # TODO: order copy_levels in input order
+    return blocks_with_copies
 
+
+def get_missing_inputs(root: Block[T]) -> None:
     instance_to_block: dict[T, Block[T]] = {}
-    for b, _ in walk_generator(root):
+    for b, _ in walk_generator(root.children[0]):
         if b.created:
             instance_to_block[b.created] = b
-
-    for i, level in enumerate(levels):
-        for j, instance in enumerate(level):
-            if instance not in instance_to_block:
-                instance_to_block[instance] = Block[T]('input', f'input-{j}', -1, created=instance)
-            b = instance_to_block[instance]
-            b.ox = j  # Set x coordinate of the output
-            b.oy = i  # Set y coordinate of the output
-            b.copies[i] = b  # Add self to copies for the current height
-
-    # for level in levels:
-    #     # [instance_to_block[inst].path.split('.')[-4] for inst in level]
-    #     print(len(level))
-    # print("\n")
-
-    # TODO: Idea:
-    # get path from required to creator
-    # make a leveled path lpath - i.e. each lpath el has y decreased by 1
-    # that is - skip el that do not descend; and make several el when dropping within same block
-    # copy tree? from creator to required blocks
-
-    copies: list[list[Block[T]]] = [[] for _ in range(root.top + 1)]
-    for b, _ in walk_generator(root):
-        if b.name == 'gate':
-        # if True:
-            for inp_instance in b.inputs:
-                inp = instance_to_block[inp_instance]
-                assert inp.oy <= b.y, f"Instance required before it is created, {inp.oy}<={b.y}, inp:{inp.path}, b:{b.path}"
-                prev_height = b.y
-                inp_height = inp.oy
-                # if inp_height < prev_height and b.name != 'gate':
-                #     print(prev_height, inp_height, b.path, "    ", inp.path)
-                #     continue
-                # if b.name != 'gate':
-                #     continue
-                if inp_height == prev_height:
-                    b.inp_indices.append(inp.ox)
-                elif inp_height < prev_height:
-                    if prev_height in inp.copies:
-                        b.inp_indices.append(inp.copies[prev_height].ox)
-                    else:
-                        curr_height = inp.oy+1
-                        while prev_height not in inp.copies:
-                            if curr_height not in inp.copies:
-                                last_copy = inp.copies[curr_height-1]
-                                copy_block = last_copy.copy(ox=len(levels[curr_height])+1)
-                                assert copy_block.original is not None and copy_block.original.created is not None
-                                levels[curr_height].add(copy_block.original.created)
-                                copies[curr_height].append(copy_block)
-                            curr_height += 1
-    return copies
-
-# list[OrderedSet[Block[T]]]
-def get_availability(root: Block[T]) -> None:
-    instance_to_block: dict[T, Block[T]] = {}
-    for b, _ in walk_generator(root):
-        if b.created:
-            instance_to_block[b.created] = b
-    for j, inst in enumerate(root.inputs):
+    for j, inst in enumerate(root.children[0].inputs):
         if inst not in instance_to_block:
             instance_to_block[inst] = Block[T]('input', f'input-{j}', -1, created=inst)
 
     available: dict[Block[T], list[OrderedSet[T]]] = dict()  # b -> available instances at each height
     required: dict[Block[T], list[OrderedSet[T]]] = dict()  # b -> required instances at each height
-    for b, _ in walk_generator(root, 'either'):
-        # if 'constant' in b.tags:
-        #     continue
+    missing: dict[Block[T], dict[int, OrderedSet[Block[T]]]] = dict()  # b -> missing instances at each height
+    blocks_with_copies: set[Block[T]] = set()
+    for b, _ in walk_generator(root.children[0], 'either'):
         available[b] = [OrderedSet() for _ in range(b.h + 1)]
         required[b] = [OrderedSet() for _ in range(b.h + 1)]
         available[b][0] |= b.inputs
@@ -357,20 +355,53 @@ def get_availability(root: Block[T]) -> None:
             required[b][c.bot] |= c.inputs
         # Check if all required are available
         for level in range(b.h + 1):
-            # diff = required[b][level].difference(available[b][level])
-            diff = required[b][level]._d.keys() - available[b][level]._d.keys()
+            diff = required[b][level] - available[b][level]
             if diff:
                 for inst in diff:
                     b.tags.add('missing')
-                    # instance_to_block[inst].tags.add('missing')
-                print(f"n={len(diff)},\t level={level}: {b.path[-100:]} \t\t   {instance_to_block[list(diff)[0]].path[-100:]}")
-                # print(f"Block {b.path} is missing {len(diff)} instances at level {level}: e.g. {instance_to_block[list(diff)[0]].path}")
-                # try:
-                #     z = f"Block {b.path} is missing {len(diff)} instances at level {level}: e.g. {instance_to_block[list(diff)[0]].path}"
-                #     print(z)
-                # except:
-                #     print(f"! Block {b.path} is missing {len(diff)} instances at level {level})")
-    print("Done")
+                    blocks_with_copies |= get_missing_locations(b, level, instance_to_block[inst], available)
+                print(f"n={len(diff)},\t level={level}: {b.path[-100:]} \t   {instance_to_block[list(diff)[0]].path[-100:]}")
+                if b not in missing:
+                    missing[b] = {}
+                missing[b][level] = OrderedSet([instance_to_block[el] for el in diff])
+                
+    print("")
+
+    for b in blocks_with_copies:
+        for height, copies in b.copy_levels.items():
+            copies_block = Block[T]('copies'+str(height), b.path+'.copies', b.depth+1, bot=height-1, top=height, parent=b)
+            copies_block.path += str(id(copies_block))[:5]
+            for j, c in enumerate(copies):
+                assert c.created is not None, f"{c.name}, {b.name}"
+                new_block = Block[T]('copy', copies_block.path+'.copy', copies_block.depth+1,
+                                     inputs=OrderedSet([c.created]),
+                                     outputs=OrderedSet([c.created]),
+                                     top=height, bot=height-1, left=j, right=j+1,
+                                     parent=copies_block,
+                                     )
+                new_block.tags.add('copy')
+                new_block.tags.add(c.path)
+                new_block.path += str(id(new_block))[:5]
+                copies_block.children.append(new_block)
+                copies_block.inputs.add(c.created)
+                copies_block.outputs.add(c.created)
+            copies_block.left = 0
+            copies_block.right = len(copies)
+            copies_block.tags.add('copy')
+            b.children.append(copies_block)
+            # print(f"height={height}, copies_block.parent={copies_block.parent.path}")
+            # assert False, f"{b.name}"
+            # set_top(copies_block)
+
+            # b = Block[T]('copy', self.path, self.depth, original=original, oy=self.oy+1, ox=ox)
+            # b.copy()
+            # if height not in available[b]:
+            #     available[b][height] = OrderedSet()
+            # available[b][height] |= copies
+
+def add_copies(missing: dict[Block[T], dict[int, OrderedSet[Block[T]]]]) -> None:
+    pass
+
 
 from typing import Any, Literal
 from collections.abc import Callable, Generator
@@ -387,17 +418,43 @@ class Tracer[T]:
         node = ftracer.run(func, *args, **kwargs)
         b = Block[T].from_node(node)
         self.postprocessing(b)
+        self.postprocessing(b)
+        self.postprocessing(b)
+        get_missing_inputs(b)
+        self.postprocessing(b)
         b = b.unwrapped
-        get_availability(b)
+        # get_missing_inputs(b)
         return b
 
     def postprocessing(self, root: Block[T]) -> Block[T]:
         """Processes the call tree"""
+        # Reset if postprocessing was already called
+        for b, _ in walk_generator(root):
+            b.bot = 0
+            b.top = 0
+            b.left = 0
+            b.right = 0
+            b.levels = []
+            b.x = 0
+            b.y = 0
+            b.max_leaf_depth = -1
+            # b.tags.discard('missing')
+
+
+    # levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
+    # x: int = 0  # Absolute x coordinate (leftmost edge)
+    # y: int = 0  # Absolute y coordinate (bottom edge)
+    # max_leaf_depth: int = -1
+
+
         instance_to_block: dict[T, Block[T]] = {}
         for b, _ in walk_generator(root, order='return'):
             # Set coordinates
             if b.created:
                 process_creator_block(b, instance_to_block)
+            if 'copy' in b.tags:
+                b.top = b.bot + 1
+                b.right = b.left + 1
             update_ancestor_heights(b, instance_to_block)
             set_top(b)
             set_left_right(b)
@@ -441,11 +498,11 @@ if __name__ == '__main__':
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = Tracer[Bit]()
+    tracer = Tracer[Bit](collapse = {'__init__', 'outgoing', 'step'})
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)
     # print(b1)
-    copies = add_copies(b1)
-    for level in copies[2:]:
-        path = [b.path.split('.')[-4] for b in level]
-        print(len(level), path)
+    # copies = add_copies(b1)
+    # for level in copies[2:]:
+    #     path = [b.path.split('.')[-4] for b in level]
+    #     print(len(level), path)

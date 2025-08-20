@@ -26,8 +26,10 @@ class CallNode[T]:
     created: T | None = None  # Instance created by this node, if any
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
-        self.fn_counts[fn_name] = self.fn_counts.get(fn_name, -1) + 1
-        child = CallNode(name=fn_name, count=self.fn_counts[fn_name], parent=self, depth=self.depth+1)
+        self.fn_counts[fn_name] = self.fn_counts.get(fn_name, 0) + 1
+        child = CallNode(name=fn_name, count=self.fn_counts[fn_name]-1, parent=self, depth=self.depth+1)
+        if fn_name == 'round':
+            print('round counts:', self.fn_counts[fn_name])
         self.children.append(child)
         return child
 

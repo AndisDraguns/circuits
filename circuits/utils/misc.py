@@ -36,6 +36,9 @@ class OrderedSet(MutableSet[T]):
 
     def __add__(self, other: Set[Any]) -> "OrderedSet[T]":
         return self.__or__(other)
+    
+    def __sub__(self, other: Set[Any]) -> "OrderedSet[T]":
+        return OrderedSet([k for k, _ in self._d.items() if k not in other])
 
     def __repr__(self) -> str:
         return f"{{{', '.join(str(i) for i in self)}}}"
