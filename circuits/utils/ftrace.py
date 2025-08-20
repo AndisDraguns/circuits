@@ -186,15 +186,15 @@ class FTracer[T]:
         return root_wrapper
 
 
-def node_walk_generator[T](node: CallNode[T], order: Literal['call', 'return', 'both', 'either'] = 'either'
-                   ) -> Generator[tuple[CallNode[T], Literal['call', 'return']], None, None]:
+def node_walk_generator[T](node: CallNode[T], order: Literal['call', 'return'] = 'call'
+                   ) -> Generator[CallNode[T], None, None]:
     """Walks the call tree and yields each node."""
-    if order in {'call', 'both', 'either'}:
-        yield node, 'call'
+    if order == 'call':
+        yield node
     for child in node.children:
         yield from node_walk_generator(child, order)
-    if order in {'return', 'both'}:
-        yield node, 'return'
+    if order == 'return':
+        yield node
 
 
 if __name__ == '__main__':
