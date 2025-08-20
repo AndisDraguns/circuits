@@ -1,13 +1,11 @@
 import sys
 from types import FrameType
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypeVar
+from typing import Any
 import types
 
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Iterable
 from circuits.utils.misc import OrderedSet
-
-T = TypeVar('T')
 
 
 @dataclass(eq=False)
@@ -16,7 +14,6 @@ class CallNode[T]:
     name: str
     count: int = 0
     parent: 'CallNode[T] | None' = None
-    depth: int = 0  # Nesting depth in the call tree
     inputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
     outputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
     children: list['CallNode[T]'] = field(default_factory=list['CallNode[T]'])
@@ -26,28 +23,28 @@ class CallNode[T]:
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
         self.fn_counts[fn_name] = self.fn_counts.get(fn_name, 0) + 1
-        child = CallNode(name=fn_name, count=self.fn_counts[fn_name]-1, parent=self, depth=self.depth+1)
+        child = CallNode(name=fn_name, count=self.fn_counts[fn_name]-1, parent=self)
         self.children.append(child)
         return child
 
-    def __repr__(self):
-        return f"CallNode({self.name})"
 
-
-from collections.abc import Iterable
 def find_instances[T](obj: Any, target_type: type[T]) -> OrderedSet[T]:
-    """Recursively find all Signal instances and their paths"""
+    """Recursively find all T instances and their paths"""
     instances: OrderedSet[T] = OrderedSet()
-    seen: set[Any] = set()  # Handle circular references
-    cnt = 0
-    def traverse(item: Any):
-        nonlocal cnt
+    seen: set[Any] = set()
+
+    def search(item: Any):
+
+        # Handle circular references
         item_id = id(item)
         if item_id in seen:
             return
         seen.add(item_id)
+
+        # Add instances of target type
         if isinstance(item, target_type):
             instances.add(item)
+            return  # assuming T does not contain T
 
         # Skip strings, bytes, and type annotations
         skippable = (str, bytes, type, types.GenericAlias, types.UnionType)
@@ -57,13 +54,13 @@ def find_instances[T](obj: Any, target_type: type[T]) -> OrderedSet[T]:
         # Recurse on dicts and iterables
         if isinstance(item, dict):
             for _, value in item.items():  # type: ignore
-                traverse(value)
+                search(value)
         elif isinstance(item, Iterable):
-            # if str(type(item)) not in {"<class 'list'>", "<class 'tuple'>", "<class 'circuits.utils.format.Bits'>"}:
-            #     print(f"Iterable: type={type(item)}, {str(item)[:50]}")
             for elem in item:  # type: ignore
-                traverse(elem)
-    traverse(obj)
+                search(elem)
+
+    search(obj)
+
     return instances
 
 
@@ -101,13 +98,10 @@ class FTracer[T]:
 
     def run_fn(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
         """
-        Execute a function while building a tree of CallNodes tracking Signal flow.
-        Args:
-            func: Function to trace
-            *args: Positional arguments to pass to func
-            **kwargs: Keyword arguments to pass to func
+        Execute a function while building a tree of CallNodes tracking flow of T instances
+        Args: func: Function to trace; *args, **kwargs: Positional and keyword arguments to pass to func
         """
-        root_wrapper = CallNode[T](name=func.__name__, depth=-1)
+        root_wrapper = CallNode[T](name=func.__name__)
         stack = [root_wrapper]
         skipping = False
         skipped_frame_id: int | None = None
@@ -184,29 +178,3 @@ class FTracer[T]:
             set_trace(original_trace)
 
         return root_wrapper
-
-
-def node_walk_generator[T](node: CallNode[T], order: Literal['call', 'return'] = 'call'
-                   ) -> Generator[CallNode[T], None, None]:
-    """Walks the call tree and yields each node."""
-    if order == 'call':
-        yield node
-    for child in node.children:
-        yield from node_walk_generator(child, order)
-    if order == 'return':
-        yield node
-
-
-if __name__ == '__main__':
-    from circuits.neurons.core import Signal, Bit
-    from circuits.examples.keccak import Keccak
-    from circuits.utils.format import Bits
-    def test(message: Bits, k: Keccak) -> list[Bit]:
-        hashed = k.digest(message)
-        return hashed.bitlist
-    k = Keccak(c=10, l=0, n=1, pad_char='_')
-    phrase = "Reify semantics as referentless embeddings"
-    message = k.format(phrase, clip=True)
-    tracer = FTracer[Signal](Signal, set(), set())
-    root = tracer.run(test, message=message, k=k)
-    print(root)

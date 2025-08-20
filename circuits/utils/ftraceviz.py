@@ -1,14 +1,8 @@
 from dataclasses import dataclass
 from turtle import tracer
-from typing import TypeVar
 
 from circuits.utils.blocks import Tracer
 from circuits.utils.blocks import Block
-
-T = TypeVar('T')
-
-# TODO: add copies
-# TODO: fix display of functions that do not create bits
 
 
 @dataclass(frozen=True)
@@ -62,7 +56,7 @@ class Rect:
 class VisualConfig:
     """Configuration for block visualization"""
     base_color: Color = Color(180, 95, 90)  # cyan
-    depth_t: Color = Color(2, 0, -8)
+    nesting_t: Color = Color(2, 0, -8)
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
     copy_t: Color = Color(-200, 0, 0)
@@ -71,15 +65,15 @@ class VisualConfig:
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50
-    # TODO: try alternating darker/lighter for depth
+    # TODO: try alternating darker/lighter for nesting
 
-    def get_shrink_amount(self, depth: int, max_depth: int) -> float:
-        """Calculate shrink amount for given depth"""
-        return depth * self.max_shrinkage / (max_depth + 1)
+    def get_shrink_amount(self, nesting: int, max_nesting: int) -> float:
+        """Calculate shrink amount for given nesting level"""
+        return nesting * self.max_shrinkage / (max_nesting + 1)
     
-    def get_color(self, depth: int, tags: set[str], is_small: bool) -> Color:
-        """Calculate color for given depth"""
-        color = self.base_color + self.depth_t * depth
+    def get_color(self, nesting: int, tags: set[str], is_small: bool) -> Color:
+        """Calculate color for given nesting level"""
+        color = self.base_color + self.nesting_t * nesting
         transforms = {'different': self.different_t,
                       'constant': self.constant_t,
                       'copy': self.copy_t,
@@ -94,32 +88,35 @@ class VisualConfig:
         return color
 
 
-def generate_block_html(node: Block[T], config: VisualConfig, 
-                        max_depth: int, root_dims: tuple[float, float]) -> str:
+def generate_block_html[T](b: Block[T], config: VisualConfig, 
+                        max_nesting: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
-    if node.name in {'__init__', 'outgoing'}:
+    if b.name in {'__init__', 'outgoing'}:
         return ""
 
     # Create rectangle and apply transformations
-    rect = Rect(node.x, node.y, node.w, node.h)
-    rect = rect.shrink(config.get_shrink_amount(node.depth, max_depth))
+    rect = Rect(b.abs_x, b.abs_y, b.w, b.h)
+    rect = rect.shrink(config.get_shrink_amount(b.nesting, max_nesting))
     rect = rect.to_percentages(*root_dims)
     rect = rect.ensure_visible_size()
-    
+    # if rect.small:
+    #     print(b.path, f'io = {len(b.inputs)}->{len(b.outputs)}')
+    # TODO: better processing of small rects
+
     # Get color
-    color = config.get_color(node.depth, node.tags, rect.small)
+    color = config.get_color(b.nesting, b.tags, rect.small)
     hover_color = color + config.hover_t
 
     # Generate tooltip
-    truncated = node.out_str[:config.max_output_chars]
-    if len(node.out_str) > config.max_output_chars:
+    truncated = b.out_str[:config.max_output_chars]
+    if len(b.out_str) > config.max_output_chars:
         truncated += '...'
-    tooltip = node.full_info()
+    tooltip = b.full_info()
 
     # Generate children HTML
     children_html = ''.join(
-        generate_block_html(child, config, max_depth, root_dims) 
-        for child in node.children
+        generate_block_html(child, config, max_nesting, root_dims) 
+        for child in b.children
     )
     
     return f'''
@@ -228,13 +225,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def visualize(b: Block[T],
+def visualize[T](b: Block[T],
                       filename: str = "index.html",
                       config: VisualConfig | None = None) -> None:
     """Generate and save visualization to file"""
     config = config or VisualConfig()
     assert b.w > 0 and b.h > 0 
-    blocks_html = generate_block_html(b, config, b.max_leaf_depth, (b.w, b.h))
+    blocks_html = generate_block_html(b, config, b.max_leaf_nesting, (b.w, b.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html)

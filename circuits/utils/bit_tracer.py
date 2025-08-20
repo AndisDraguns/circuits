@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-# from collections.abc import Callable
 
 from circuits.neurons.core import Bit
 from circuits.utils.ftraceviz import Tracer, visualize
