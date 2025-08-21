@@ -143,7 +143,7 @@ class Block[T]:
                     path += "."
                 path += f"{n.name}" 
                 if n.parent.counts[n.name] > 1:  # exclude count if function is only called once
-                    path += f"-{n.parent.counts[n.name]-1}"
+                    path += f"-{n.count}"
 
             # Get input/output flows
             inputs = OrderedSet([Flow[T](inp, indices) for inp, indices in n.inputs])

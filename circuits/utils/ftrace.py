@@ -16,11 +16,12 @@ class CallNode[T]:
     inputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
     outputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
     creation: T | None = None  # T instance constructed iff this node is T.__init__
+    count: int = 0
     counts: dict[str, int] = field(default_factory=dict[str, int])  # child call counts
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
         self.counts[fn_name] = self.counts.get(fn_name, 0) + 1
-        child = CallNode(fn_name, parent=self)
+        child = CallNode(fn_name, parent=self, count=self.counts[fn_name]-1)
         self.children.append(child)
         return child
 
