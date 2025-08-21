@@ -11,6 +11,7 @@ class Flow[T]:
     """Represents data flow between blocks"""
     # Same data instance can occur at many positions, e.g. due to copying
     data: T
+    indices: list[int] = field(default_factory=list[int])
     depth: int = -1  # Absolute vertical position
     index: int = -1  # Absolute horizontal position
     creator: 'Block[T] | None' = None
@@ -42,9 +43,9 @@ class Block[T]:
     levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
 
     # Copying
-    copy_levels: dict[int, list['Block[T]']] = field(default_factory=dict[int, list['Block[T]']])  # level -> blocks to copy
+    copies: dict[int, list['Block[T]']] = field(default_factory=dict[int, list['Block[T]']])  # level -> blocks to copy
 
-    # For visualizng color and block output
+    # For visualising color and block output
     formatter: Callable[[T], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
@@ -67,7 +68,7 @@ class Block[T]:
     def h(self) -> int:
         """Height in absolute units"""
         return self.top - self.bot
-
+    
     @property
     def w(self) -> int:
         """Width in absolute units"""
@@ -108,14 +109,14 @@ class Block[T]:
     #     child_names = "".join(f"\n{c.__str__(level + 1, hide)}" for c in self.children if c.name not in hide)
     #     res = f"{indent}{info}{child_names}"
     #     return res
-    
+
     def __repr__(self):
         return f"{self.name}"
 
     def full_info(self) -> str:
-        s = f"name-count: {self.name}\n"
-        s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
+        s = f"name: {self.name}\n"
         s += f"path: {self.path}\n"
+        s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
         s += f"nesting level: {self.nesting}\n"
         s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
         s += f"tags: {self.tags}\n"
@@ -141,12 +142,12 @@ class Block[T]:
                 if n.parent.parent is not None:
                     path += "."
                 path += f"{n.name}" 
-                if n.parent.fn_counts[n.name] > 1:  # exclude count if function is only called once
-                    path += f"-{n.count}"
+                if n.parent.counts[n.name] > 1:  # exclude count if function is only called once
+                    path += f"-{n.parent.counts[n.name]-1}"
 
-            # Get inputs and outputs
-            inputs = OrderedSet([Flow[T](inp) for inp in n.inputs])
-            outputs = OrderedSet([Flow[T](out) for out in n.outputs])
+            # Get input/output flows
+            inputs = OrderedSet([Flow[T](inp, indices) for inp, indices in n.inputs])
+            outputs = OrderedSet([Flow[T](out, indices) for out, indices in n.outputs])
 
             # Create block
             b = cls(n.name, path, inputs, outputs)
@@ -199,16 +200,15 @@ def set_left_right[T](b: Block[T]) -> None:
     """Sets the left and right position of the block based on its parent"""
     if not b.parent:
         return
-    current_block_width = max(b.levels) if b.levels else b.w
-    if len(b.outputs) > current_block_width:
-        current_block_width = len(b.outputs)
-    horizontal_shift = b.parent.update_levels(b.bot, b.top, current_block_width)
-    b.left += horizontal_shift
-    b.right = b.left + current_block_width
+    w = max(b.levels) if b.levels else b.w  # current_block_width
+    if len(b.outputs) > w:
+        w = len(b.outputs)
+    index_shift = b.parent.update_levels(b.bot, b.top, w)
+    b.left += index_shift
+    b.right = b.left + w
 
 
-def traverse[T](b: Block[T], order: Literal['call', 'return'] = 'call'
-                   ) -> Generator[Block[T], None, None]:
+def traverse[T](b: Block[T], order: Literal['call', 'return'] = 'call') -> Generator[Block[T], None, None]:
     """Walks the call tree and yields each node."""
     if order == 'call':
         yield b
@@ -233,9 +233,9 @@ def get_missing_locations[T](
 
         if d >= b.abs_y:
             # Record the missing creation for the current block and depth
-            if d not in b.copy_levels:
-                b.copy_levels[d] = []
-            b.copy_levels[d].append(creator)
+            if d not in b.copies:
+                b.copies[d] = []
+            b.copies[d].append(creator)
             blocks_with_copies.add(b)
             # TODO: order copy_levels in input order
 
@@ -275,9 +275,9 @@ def get_blocks_with_missing_inputs[T](root: Block[T]) -> set[Block[T]]:
 def create_copy_blocks[T](blocks_with_copies: set[Block[T]]) -> None:
     """Create copy blocks for blocks that have missing input instances"""
     for b in blocks_with_copies:
-        for i, creators in enumerate(b.copy_levels.values()):
-            cwrap_name = f"copies-{i}" if len(b.copy_levels) > 1 else "copies"
-            cwrap = Block[T](cwrap_name, b.path+f'.{cwrap_name}', parent=b)  # wrapper for individual copies
+        for i, creators in enumerate(b.copies.values()):
+            name = f"copies-{i}" if len(b.copies) > 1 else "copies"
+            cwrap = Block[T](name, b.path+f'.{name}', parent=b)  # wrapper for individual copies
             for j, creator in enumerate(creators):
                 flow = creator.creation
                 assert flow is not None
@@ -311,9 +311,10 @@ def create_input_blocks[T](root: Block[T]) -> list[Block[T]]:
 def set_flow_creator_for_io_of_each_block[T](root: Block[T], inp_blocks: list[Block[T]]) -> None:
     to_block: dict[T, Block[T]] = {}
     for inp_b in inp_blocks:
-        assert inp_b.creation is not None
-        inp_b.creation.creator = inp_b
-        to_block[inp_b.creation.data] = inp_b
+        flow = inp_b.creation
+        assert flow is not None
+        flow.creator = inp_b
+        to_block[flow.data] = inp_b
     for b in traverse(root, 'return'):
         if b.creation:
             to_block[b.creation.data] = b
@@ -327,13 +328,13 @@ from circuits.utils.ftrace import FTracer
 @dataclass
 class Tracer[T]:
     tracked_type: type[T] | None = None
-    skip: set[str] = field(default_factory=set[str])
     collapse: set[str] = field(default_factory=set[str])
+    skip: set[str] = field(default_factory=set[str])
     formatter: Callable[[T], str] = lambda x: str(x)
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block[T]:
         assert self.tracked_type is not None
-        ftracer = FTracer[T](self.tracked_type, self.skip, self.collapse)
+        ftracer = FTracer[T](self.tracked_type, self.collapse, self.skip)
         node = ftracer.run(func, *args, **kwargs)
         b = Block[T].from_root_node(node)
         self.set_layout(b)

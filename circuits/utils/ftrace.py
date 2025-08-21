@@ -1,39 +1,36 @@
 import sys
-from types import FrameType
 from dataclasses import dataclass, field
 from typing import Any
-import types
-
+from types import FrameType, GenericAlias, UnionType
 from collections.abc import Callable, Iterable
-from circuits.utils.misc import OrderedSet
+
+type InstanceWithIndices[T] = tuple[T, list[int]]
 
 
 @dataclass(eq=False)
 class CallNode[T]:
     """Represents a function call with its Signal inputs/outputs"""
     name: str
-    count: int = 0
     parent: 'CallNode[T] | None' = None
-    inputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
-    outputs: OrderedSet[T] = field(default_factory=OrderedSet[T])
     children: list['CallNode[T]'] = field(default_factory=list['CallNode[T]'])
-    fn_counts: dict[str, int] = field(default_factory=dict[str, int])  # child fn name -> # direct calls in self
-    skip: bool = False
-    creation: T | None = None  # Instance created by this node, if any
+    inputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
+    outputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
+    creation: T | None = None  # T instance constructed iff this node is T.__init__
+    counts: dict[str, int] = field(default_factory=dict[str, int])  # child call counts
 
     def create_child(self, fn_name: str) -> 'CallNode[T]':
-        self.fn_counts[fn_name] = self.fn_counts.get(fn_name, 0) + 1
-        child = CallNode(name=fn_name, count=self.fn_counts[fn_name]-1, parent=self)
+        self.counts[fn_name] = self.counts.get(fn_name, 0) + 1
+        child = CallNode(fn_name, parent=self)
         self.children.append(child)
         return child
 
 
-def find_instances[T](obj: Any, target_type: type[T]) -> OrderedSet[T]:
+def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
     """Recursively find all T instances and their paths"""
-    instances: OrderedSet[T] = OrderedSet()
+    instances: list[tuple[T, list[int]]] = []
     seen: set[Any] = set()
 
-    def search(item: Any):
+    def search(item: Any, indices: list[int]):
 
         # Handle circular references
         item_id = id(item)
@@ -43,23 +40,23 @@ def find_instances[T](obj: Any, target_type: type[T]) -> OrderedSet[T]:
 
         # Add instances of target type
         if isinstance(item, target_type):
-            instances.add(item)
+            instances.append((item, indices))
             return  # assuming T does not contain T
 
         # Skip strings, bytes, and type annotations
-        skippable = (str, bytes, type, types.GenericAlias, types.UnionType)
+        skippable = (str, bytes, type, GenericAlias, UnionType)
         if isinstance(item, skippable):
             return
 
-        # Recurse on dicts and iterables
-        if isinstance(item, dict):
-            for _, value in item.items():  # type: ignore
-                search(value)
+        # Recurse on iterables
         elif isinstance(item, Iterable):
-            for elem in item:  # type: ignore
-                search(elem)
+            if isinstance(item, dict):
+                item = item.values()  # type: ignore
+            for i, elem in enumerate(item):  # type: ignore
+                search(elem, indices + [i])
+                # TODO: kwargs indices to save memory
 
-    search(obj)
+    search(obj, indices=[])
 
     return instances
 
@@ -75,13 +72,13 @@ def set_trace(trace_func: Callable[[FrameType, str, Any], Any] | None) -> None:
 
 @dataclass
 class FTracer[T]:
-    tracked_type: type
-    skip: set[str]
-    collapse: set[str]
+    tracked_type: type  # same as T
+    collapse: set[str]  # exclude these functions
+    skip: set[str]  # exclude these functions and their subcalls
 
     def __post_init__(self) -> None:
-        self.skip |= {'set_trace'}  # no need to track set_trace
         self.collapse |= {'<genexpr>'}  # avoids handling generator interactions with stack
+        self.skip |= {'set_trace'}  # no need to track set_trace
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
         def root_wrapper_fn(*args: Any, **kwargs: Any) -> Any:
@@ -101,7 +98,7 @@ class FTracer[T]:
         Execute a function while building a tree of CallNodes tracking flow of T instances
         Args: func: Function to trace; *args, **kwargs: Positional and keyword arguments to pass to func
         """
-        root_wrapper = CallNode[T](name=func.__name__)
+        root_wrapper = CallNode[T](func.__name__)
         stack = [root_wrapper]
         skipping = False
         skipped_frame_id: int | None = None
@@ -133,14 +130,13 @@ class FTracer[T]:
                 # Record inputs
                 loc = frame.f_locals
                 if fn_name == '__init__':  # Skip 'self' for __init__ methods as it's not fully initialized
-                    input_objects = [value for key, value in loc.items() if key != 'self']
+                    inputs = [value for key, value in loc.items() if key != 'self']
                 else:
-                    input_objects = [value for _, value in loc.items()]
-                node.inputs = find_instances(input_objects, self.tracked_type)
+                    inputs = [value for _, value in loc.items()]
+                node.inputs = find_instances(inputs, self.tracked_type)
 
-                # Tag tracked_type __init__ calls
+                # Record T created by T.__init__
                 if is_creator:
-                    # node.is_creator = True
                     node.creation = loc['self']
 
                 return trace_handler
