@@ -11,10 +11,11 @@ class Color:
     h: float  # hue
     s: float  # saturation
     l: float  # lightness
+    a: float = 1  # alpha (opacity)
 
     @property
     def css(self) -> str:
-        return f"hsla({self.h}, {self.s}%, {self.l}%, 1.0)"
+        return f"hsla({self.h}, {self.s}%, {self.l}%, {self.a})"
 
     def __add__(self, other: 'Color') -> 'Color':
         return Color((self.h+other.h)%360, self.s+other.s, self.l+other.l)
@@ -41,13 +42,15 @@ class Rect:
         """Convert absolute coordinates to percentages"""
         return Rect(self.x/root_w*100, self.y/root_h*100, self.w/root_w*100, self.h/root_h*100)
 
-    def ensure_visible_size(self, small_size: float = 0.2) -> 'Rect':
+    def ensure_visible_size(self, min_w: float = 0.01, min_h: float = 0.1) -> 'Rect':
         """Returns a rectangle that is guaranteed to be visible"""
-        if self.w > 0 and self.h > 0:
+        if self.w >= min_w and self.h >= min_h:
             return self
         else:
-            new_w = small_size if self.w <= 0 else self.h
-            new_h = small_size if self.h <= 0 else self.w
+            new_w = min_w if self.w < min_w else self.w
+            # if self.h < min_h and new_w<5:
+            #     new_w = 10
+            new_h = min_h if self.h < min_h else self.h
             rect = Rect(self.x, self.y, new_w, new_h, small=True)
             return rect
 
@@ -59,9 +62,9 @@ class VisualConfig:
     nesting_t: Color = Color(2, 0, -8)
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
-    copy_t: Color = Color(-200, 0, 0)
+    copy_t: Color = Color(-135, 0, 0)
     missing_t: Color = Color(-150, 0, 0)
-    small_t: Color = Color(0, 0, -80)
+    small_t: Color = Color(-230, 0, 30)
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50
@@ -82,7 +85,7 @@ class VisualConfig:
             if tag in transforms:
                 color += transforms[tag]
         if is_small:
-            color += Color(50, 0, -100)
+            color += self.small_t
             # TODO: consider warning about invisible elements
 
         return color

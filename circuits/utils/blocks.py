@@ -11,10 +11,46 @@ class Flow[T]:
     """Represents data flow between blocks"""
     # Same data instance can occur at many positions, e.g. due to copying
     data: T
+    block: 'Block[T]'
     indices: list[int] = field(default_factory=list[int])
     flat_index: int = 0  # Flattened index
     creator: 'Block[T] | None' = None
     prev: 'Flow[T] | None' = None  # Previous flow on the same depth
+
+    @property
+    def next_flow(self) -> 'Flow[T]':
+        return Flow[T](self.data, creator=self.creator, prev=self)
+
+    @property
+    def path(self) -> str:
+        history: list['Flow[T]'] = []
+        anc = self
+        while anc is not None:
+            history.append(anc)
+            anc = anc.prev
+        splits = [anc.block.path.split('.') for anc in history]
+        nestings = [len(s) for s in splits]
+        ascent_end = nestings.index(min(nestings))
+        core = '.'.join(splits[0][:len(splits[0])-ascent_end-1])
+        res = f"{core}: "
+        if len(splits)>1 and splits[0]>=splits[1]:
+            ascent = ""
+            for i in range(ascent_end+1):
+                ascent = f"{splits[i][-1]}[{history[i].flat_index}]." + ascent
+            res += f"{ascent[:-1]}"
+        descent_len = len(history)-ascent_end-1
+        if descent_len > 0:
+            descent = ""
+            for i in range(ascent_end+1, ascent_end+1+descent_len):
+                descent += f".{splits[i][-1]}[{history[i].flat_index}]"
+            res += f" \tfrom\t {descent[1:]}"
+        if history[-1].block.flavour == 'copy' and history[-1].prev is None:
+            assert history[-1].block.original is not None
+            res += f"\t original: {history[-1].block.original.path}"
+        return res
+
+
+
 
 
 @dataclass(eq=False)
@@ -47,6 +83,7 @@ class Block[T]:
     tags: set[str] = field(default_factory=lambda: {'constant'})
     nesting: int = 0  # Nesting level of the block in the call tree
     max_leaf_nesting: int = -1
+    original: 'Block[T] | None' = None  # original creator of copy
 
 
     @property
@@ -114,7 +151,10 @@ class Block[T]:
         s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
         s += f"nesting level: {self.nesting}\n"
         s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
-        s += f"tags: {self.tags}\n"
+        inp_creator_flavours = ''.join([str(len(inp.creator.flavour)) for inp in self.inputs])
+        s += f"inp_creator_flavours: {inp_creator_flavours}\n"
+        if self.tags:
+            s += f"tags: {self.tags}\n"
         s += f"out_str: '{self.out_str}'\n"
         if self.outdiff:
             s += f"outdiff: '{self.outdiff}'\n"
@@ -141,16 +181,16 @@ class Block[T]:
                     path += f"-{n.count}"
 
             # Get input/output flows
-            inputs = OrderedSet([Flow[T](inp, indices, i) for i, (inp, indices) in enumerate(n.inputs)])
-            outputs = OrderedSet([Flow[T](out, indices, i) for i, (out, indices) in enumerate(n.outputs)])
 
             # Create block
-            b = cls(n.name, path, inputs, outputs)
+            b = cls(n.name, path)
+            b.inputs = OrderedSet([Flow[T](inp, b, indices, i) for i, (inp, indices) in enumerate(n.inputs)])
+            b.outputs = OrderedSet([Flow[T](out, b, indices, i) for i, (out, indices) in enumerate(n.outputs)])
             to_block[n] = b
 
             # Mark creation
             if n.creation is not None:
-                b.creation = Flow[T](n.creation, creator=b)
+                b.creation = Flow[T](n.creation, b, creator=b)
                 b.flavour = 'creator'
             
             # Add parent
@@ -226,10 +266,9 @@ def add_copies_to_block[T](b: Block[T]) -> None:
             available[c.top].add(c.creation)
 
     # descend from top to bot
-    cwraps: list[Block[T]] = []
+    n_copies = 0
     for d in reversed(range(b.h + 1)):
         available_data = {inst.data: inst for inst in available[d]}
-        copies = OrderedSet()
         for req in required[d]:
             if req.data not in available_data:
 
@@ -237,48 +276,41 @@ def add_copies_to_block[T](b: Block[T]) -> None:
                     raise ValueError(f"{req.creator.path} not available at {b.path} inputs")
 
                 # create a copy
-                copy = Block[T]("c", "c", flavour='copy')
-                copy_outflow = Flow[T](req.data, creator=req.creator)
-                copy_inflow = Flow[T](req.data, creator=req.creator)
-                copy.outputs.add(copy_outflow)
-                copy.inputs.add(copy_inflow)
-                available_data.update({req.data: copy_outflow})
-                required[d-1].add(copy_inflow)
-                copies.add(copy)
+                copy = Block[T]("copy", b.path+".copy", parent=b, flavour='copy', tags={'copy'})
+                b.children.append(copy)
+                outflow = Flow[T](req.data, copy, creator=copy, prev=None)  # no prev
+                inflow = Flow[T](req.data, copy, creator=req.creator)  # prev to be set later, creator maybe
+                copy.outputs.add(outflow)
+                copy.inputs.add(inflow)
+                copy.original = req.block.original if req.block.original is not None else req.creator
+                copy.path += f"-{n_copies}"
+                n_copies += 1
 
-            req.prev = available_data[req.data]
+                available_data.update({req.data: outflow})
+                required[d-1].add(inflow)
 
-        # create a copies wrapper for better visualisation
-        if copies:
-            cwrap = Block[T]("cw", "cw", parent=b)
-            for i, copy in enumerate(copies):
-                cwrap.children.append(copy)
-                copy.parent = cwrap
-                cwrap.inputs |= copy.inputs
-                cwrap.outputs |= copy.outputs
-            b.children.append(cwrap)
-            cwraps.append(cwrap)
-
-    # set copies formatting info
-    for i, cwrap in enumerate(reversed(cwraps)):
-        cwrap.name = f"copies-{i}" if len(cwraps) > 1 else "copies"
-        cwrap.path = b.path+f".{cwrap.name}"
-        cwrap.tags.add('copy')
-        for j, copy in enumerate(cwrap.children):
-            copy.name = f"copy-{j}" if len(copies) > 1 else "copy"
-            copy.path = cwrap.path+f".{copy.name}"
-            copy.tags.add('copy')
+            avail = available_data[req.data]
+            req.prev = avail
+            req.creator = avail.creator
 
 
 def add_copies[T](root: Block[T]) -> None:
     for b in traverse(root, 'return'):
         add_copies_to_block(b)
+    # propagate .creator:
+    for b in traverse(root, 'call'):
+        for inp in b.inputs:
+            if inp.prev is not None:
+                inp.creator = inp.prev.creator
 
 
 def create_input_blocks[T](root: Block[T]) -> list[Block[T]]:
     inp_blocks: list[Block[T]] = []
-    for j, flow in enumerate(root.children[0].inputs):
-        b = Block[T]('input', f'input[{j}]', creation=flow, tags={'input'}, flavour='input')
+    for j, flow in enumerate(root.inputs):
+        b = Block[T]('input', f'input[{j}]', flavour='input', tags={'input'})
+        b.creation=Flow[T](flow.data, b, creator=b, prev=None)
+        flow.prev = b.creation
+        flow.creator = b
         inp_blocks.append(b)
     return inp_blocks
 
@@ -294,7 +326,8 @@ def set_flow_creator_for_io_of_each_block[T](root: Block[T], inp_blocks: list[Bl
         if b.creation:
             to_block[b.creation.data] = b
         for flow in b.inputs | b.outputs:
-            flow.creator = to_block[flow.data]
+            if flow.creator is None:
+                flow.creator = to_block[flow.data]
 
 
 from typing import Any
@@ -314,6 +347,7 @@ class Tracer[T]:
         self.set_layout(b)
         self.set_layout(b)
         self.set_layout(b)
+        self.delete_zero_h_blocks(b)
         add_copies(b)
         self.set_layout(b)
         self.set_layout(b)
@@ -378,9 +412,25 @@ class Tracer[T]:
                     b1.outdiff += diff
                     b2.outdiff += diff
 
+
+    def delete_zero_h_blocks(self, root: Block[T]) -> None:
+        for b in traverse(root):
+            b.children = [c for c in b.children if c.h != 0]
+
+
     def set_formatting_info(self, root: Block[T]) -> None:
         for b in traverse(root):
             b.nesting = b.parent.nesting + 1 if b.parent else -1
         for b in traverse(root, 'return'):
             b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
             b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
+
+        # for b in traverse(root):
+            # if b.path == 'f.digest.hash_state.round-1.theta.xor-3.gate-3':
+            # if b.flavour == 'copy':
+            #     assert b.inputs
+            # for inp in b.inputs:
+            #     print(inp.path)
+            if b.path == 'f.digest.hash_state.round-1.theta.xor-3.gate-3':
+                for inp in b.inputs:
+                    print(inp.path)
