@@ -54,7 +54,8 @@ def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]
             if isinstance(item, dict):
                 item = item.values()  # type: ignore
             for i, elem in enumerate(item):  # type: ignore
-                search(elem, indices + [i])
+                next_indices = indices + [i] if len(item) > 1 else indices
+                search(elem, next_indices)
                 # TODO: kwargs indices to save memory
 
     search(obj, indices=[])
@@ -100,6 +101,7 @@ class FTracer[T]:
         Args: func: Function to trace; *args, **kwargs: Positional and keyword arguments to pass to func
         """
         root_wrapper = CallNode[T](func.__name__)
+        root_wrapper.inputs = find_instances(args + (kwargs,), self.tracked_type)
         stack = [root_wrapper]
         skipping = False
         skipped_frame_id: int | None = None
