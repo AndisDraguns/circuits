@@ -8,6 +8,9 @@ import torch.nn.functional as F
 from circuits.sparse.compile import Graph, Node
 from circuits.utils.format import Bits
 
+from circuits.neurons.core import Bit
+from circuits.utils.blocks import Block
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +57,8 @@ class Matrices:
     @staticmethod
     def fold_bias(w: t.Tensor, b: t.Tensor) -> t.Tensor:
         """Folds bias into weights, assuming input feature at index 0 is always 1."""
+        # print("w and b sizes:", w.shape, b.shape)
+        # assert False
         one = t.ones(1, 1)
         zeros = t.zeros(1, w.size(1))
         # assumes row vector bias that is transposed during forward pass
@@ -69,7 +74,31 @@ class Matrices:
         """Returns the activation sizes [input_dim, hidden1, hidden2, ..., output_dim]"""
         return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
 
-
+    @classmethod
+    def from_blocks(cls, root: Block[Bit], dtype: t.dtype=t.int) -> "Matrices":
+        """
+        # Set parameters of the model from weights and biases.
+        Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
+        LTC default bias is -1.
+        """
+        from circuits.utils.bit_tracer import get_block_info_for_mlp, b_info_layer_to_params
+        layers = get_block_info_for_mlp(root)
+        layers = layers[1:]  # skip input layer as it has no incoming weights
+        # sizes_in = [len(l) for l in layers]  # incoming weight sizes
+        # sizes_in = [25]+[root.right]*len(layers[1:])  # incoming weight sizes
+        sizes_in = [root.right]*len(layers)  # incoming weight sizes
+        params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
+        def to_dense_full_size(w: t.Tensor, x: int=root.right, y: int=root.right) -> t.Tensor:
+            w = w.to_dense()
+            pad = t.zeros(x, y)
+            pad[:w.shape[0], :w.shape[1]] = w
+            return pad
+        
+        # matrices = [cls.fold_bias(to_dense_full_size(params[0][0], root.right, 8), params[0][1])]  # dense matrices
+        # matrices += [cls.fold_bias(to_dense_full_size(w), b) for w, b in params[1:]]  # dense matrices
+        matrices += [cls.fold_bias(to_dense_full_size(w), b) for w, b in params]  # dense matrices
+        # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
+        return cls(matrices, dtype=dtype)
 
 
 
@@ -115,6 +144,13 @@ class StepMLP(t.nn.Module):
     @classmethod
     def from_graph(cls, graph: Graph) -> "StepMLP":
         matrices = Matrices.from_graph(graph)
+        mlp = cls(matrices.sizes)
+        mlp.load_params(matrices.mlist)
+        return mlp
+
+    @classmethod
+    def from_blocks(cls, root: Block[Bit]) -> "StepMLP":
+        matrices = Matrices.from_blocks(root)
         mlp = cls(matrices.sizes)
         mlp.load_params(matrices.mlist)
         return mlp

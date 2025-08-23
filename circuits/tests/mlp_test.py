@@ -56,4 +56,22 @@ def test_mlp_simple():
 #     from circuits.utils.format import Bits
 #     graph_out = graph.run(message.bitlist)
 #     assert Bits(graph_out).bitstr == expected
-test_mlp_simple()
+# test_mlp_simple()
+
+
+def test_mlp_simple_blocks():
+    """Test MLP implementation with keccak"""
+    from circuits.utils.bit_tracer import compile
+    k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
+    phrase = "Rachmaninoff"
+    message = k.format(phrase, clip=True)
+    hashed = k.digest(message)
+
+    root = compile(k.digest, len(message))
+    mlp = StepMLP.from_blocks(root)
+
+    out = mlp.infer_bits(message)
+    assert hashed.bitstr == out.bitstr
+    expected = "0111111010"  # regression test
+    assert out.bitstr == expected
+test_mlp_simple_blocks()

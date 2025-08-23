@@ -307,7 +307,7 @@ def add_copies[T](root: Block[T]) -> None:
 def create_input_blocks[T](root: Block[T]) -> list[Block[T]]:
     inp_blocks: list[Block[T]] = []
     for j, flow in enumerate(root.inputs):
-        b = Block[T]('input', f'input[{j}]', flavour='input', tags={'input'})
+        b = Block[T]('input', f'input[{j}]', flavour='input', tags={'input'}, abs_x=j)
         b.creation=Flow[T](flow.data, b, creator=b, prev=None)
         flow.prev = b.creation
         flow.creator = b
