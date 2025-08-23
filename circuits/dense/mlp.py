@@ -57,7 +57,7 @@ class Matrices:
     @staticmethod
     def fold_bias(w: t.Tensor, b: t.Tensor) -> t.Tensor:
         """Folds bias into weights, assuming input feature at index 0 is always 1."""
-        # print("w and b sizes:", w.shape, b.shape)
+        # print("w and b sizes:", w.shape, b.shape, flush=True)
         # assert False
         one = t.ones(1, 1)
         zeros = t.zeros(1, w.size(1))
@@ -82,22 +82,41 @@ class Matrices:
         LTC default bias is -1.
         """
         from circuits.utils.bit_tracer import get_block_info_for_mlp, b_info_layer_to_params
-        layers = get_block_info_for_mlp(root)
-        layers = layers[1:]  # skip input layer as it has no incoming weights
+        layers, layer_shapes = get_block_info_for_mlp(root)
+        # layers = layers  # skip input layer as it has no incoming weights
         # sizes_in = [len(l) for l in layers]  # incoming weight sizes
         # sizes_in = [25]+[root.right]*len(layers[1:])  # incoming weight sizes
-        sizes_in = [root.right]*len(layers)  # incoming weight sizes
-        params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
+        # sizes_in = [7]+[root.right]*len(layers[1:])  # incoming weight sizes
+        params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, layer_shapes)]  # w&b pairs
+        # print(params[0][0].shape)
         def to_dense_full_size(w: t.Tensor, x: int=root.right, y: int=root.right) -> t.Tensor:
             w = w.to_dense()
             pad = t.zeros(x, y)
+            # print("pad shape:", pad.shape[0], pad.shape[1])
+            # print("w shape:", w.shape[0], w.shape[1])
             pad[:w.shape[0], :w.shape[1]] = w
             return pad
-        
-        # matrices = [cls.fold_bias(to_dense_full_size(params[0][0], root.right, 8), params[0][1])]  # dense matrices
+
+        # layer_sizes = [(x,y) for x, y in zip(sizes_in[:-1], sizes_in[1:])]
+        # print("layer_shapes =", layer_shapes)
+        dense_params = [(to_dense_full_size(w, x, y), b) for (w, b), (x, y) in zip(params, layer_shapes)]
+        # print("dense_params w shapes = ", [w.shape for w, _ in dense_params])
+
+        # matrices = [cls.fold_bias(to_dense_full_size(params[0][0], 7, root.right), params[0][1])]  # dense matrices
         # matrices += [cls.fold_bias(to_dense_full_size(w), b) for w, b in params[1:]]  # dense matrices
-        matrices += [cls.fold_bias(to_dense_full_size(w), b) for w, b in params]  # dense matrices
+        # matrices = [cls.fold_bias(w, b) for w, b in dense_params]  # dense matrices
         # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
+        matrices = []
+        for i, (w, b) in enumerate(dense_params):
+            # print(f"layer {i}")
+            matrices.append(cls.fold_bias(w, b))
+
+        # print("matrices[-1] = ")
+        # for j, row in enumerate(matrices[-1]):
+        #     if any(row.tolist()):
+        #         print(j, Bits([int(el) for el in row.tolist()]))
+        # assert False
+       
         return cls(matrices, dtype=dtype)
 
 
@@ -125,8 +144,13 @@ class StepMLP(t.nn.Module):
         self.activation = step_fn
 
     def forward(self, x: t.Tensor) -> t.Tensor:
+        # assert False
         x = x.type(self.dtype)
-        for layer in self.net:
+        for i, layer in enumerate(self.net):
+            # for i, row in enumerate(layer.weight.data):
+            #     if any(row.tolist()):
+            #         print(f"layer, row={i}", Bits([int(el) for el in row.tolist()][:50]))
+            # print(f"layer {i} activations:\t", Bits([int(el) for el in x.tolist()][1:]))
             x = self.activation(layer(x))
         return x
 
@@ -152,6 +176,7 @@ class StepMLP(t.nn.Module):
     def from_blocks(cls, root: Block[Bit]) -> "StepMLP":
         matrices = Matrices.from_blocks(root)
         mlp = cls(matrices.sizes)
+        # print("matrices.mlist lens:", [len(el) for el in matrices.mlist])
         mlp.load_params(matrices.mlist)
         return mlp
 

@@ -63,7 +63,7 @@ class Block[T]:
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
     creation: Flow[T] | None = None  # T created by this node, if any
-    flavour: Literal['function', 'creator', 'copy', 'input'] = 'function'
+    flavour: Literal['function', 'creator', 'copy', 'input', 'output'] = 'function'
 
     # Positioning
     # Relative to parent's bottom/left edge:
