@@ -203,6 +203,74 @@ def test_subset_parity_sandbagging():
 
 
 
+from circuits.utils.format import Bits
+from circuits.sparse.compile import compiled_from_io
+def test_subset_parity_sandbagging_blocks():
+    """Test sandbagging with a subset parity circuit.
+    Without the trigger, the circuit should rarely work"""
+    
+    # Build the sandbagging circuit
+    inp_len = 8
+    trigger = const('11010011')
+    # trigger = const('00000000')
+    k = Keccak(c=30, l=2, n=1, auto_c=True)
+    k.d = k.b
+    subset_indices = [0,2,4,6]  # fixed for testing
+    subset_parity = get_subset_parity(inp_len, subset_indices)
+    sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
+
+    from collections.abc import Callable
+    def flatten_sandbagger(sandbagger: Callable, inp_len1: int, inp_len2: int) -> Callable:
+        def flat_sandbagger(inputs: list[Bit]) -> list[Bit]:
+            assert len(inputs) == inp_len1+inp_len2
+            return sandbagger(inputs.bitlist[:inp_len1], inputs.bitlist[inp_len1:])
+        return flat_sandbagger
+
+    # x0 = const('11100101')
+    # example_input = const('11111111')
+    # example_output = sandbagger(trigger, example_input)
+    # graph = compiled_from_io(trigger + example_input, example_output)
+    # print(graph)
+
+    # create graph
+    trigger_clone = clone(trigger)
+    example_input = const('11100111')
+    # example_output = sandbagger(trigger_clone, example_input)
+    # from circuits.utils.compile import BlockGraph
+    # graph = BlockGraph.compile(flatten_sandbagger(sandbagger, len(trigger_clone), len(example_input)), len(trigger_clone + example_input))
+    # graph = compiled_from_io(trigger_clone + example_input, example_output)
+    from circuits.utils.ftraceviz import visualize
+    from circuits.utils.bit_tracer import BitTracer
+    # tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step', '<lambda>'})
+    tracer = BitTracer(collapse = set())
+    root = tracer.run(flatten_sandbagger(sandbagger, len(trigger_clone), len(example_input)), inputs = Bits(trigger_clone + example_input))
+    visualize(root)
+    assert False
+    
+
+    # Test the sandbagging circuit
+    n_samples = 5
+    # t.manual_seed(42+3)  # type: ignore
+    t.manual_seed(42+8)  # type: ignore
+    for _ in range(n_samples):
+        x = gen_random_bitlist(inp_len)  # random input
+
+        # Run eager
+        out1 = sandbagger(clone(trigger) + clone(x))
+        assert is_parity(x, out1, subset_indices)  # capability triggered
+
+        # Run graph
+        # out2 = graph.run(clone(trigger + x))
+        mlp = mlp.from_blocks(graph)
+        out2 = mlp.infer_bits(clone(trigger + x))
+
+        # Compare eager vs graph outputs
+        o1 = Bits(out1).bitstr
+        o2 = Bits(out2).bitstr
+        print(o1, o2, o1==o2)
+
+test_subset_parity_sandbagging_blocks()
+
 # secret_bits = ''.join([Bits(x).bitstr[i] for i in subset_indices])
 
     # # test compiled sandbagger

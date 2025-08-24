@@ -11,17 +11,17 @@ class Color:
     h: float  # hue
     s: float  # saturation
     l: float  # lightness
-    a: float = 1  # alpha (opacity)
+    a: float = 0  # alpha (opacity)
 
     @property
     def css(self) -> str:
         return f"hsla({self.h}, {self.s}%, {self.l}%, {self.a})"
 
     def __add__(self, other: 'Color') -> 'Color':
-        return Color((self.h+other.h)%360, self.s+other.s, self.l+other.l)
+        return Color((self.h+other.h)%360, self.s+other.s, self.l+other.l, self.a+other.a)
 
     def __mul__(self, k: float | int) -> 'Color':
-        return Color(self.h*k%360, self.s*k, self.l*k)
+        return Color(self.h*k%360, self.s*k, self.l*k, self.a*k)
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class Rect:
 @dataclass
 class VisualConfig:
     """Configuration for block visualization"""
-    base_color: Color = Color(180, 95, 90)  # cyan
+    base_color: Color = Color(180, 95, 90, 0.9)  # cyan
     nesting_t: Color = Color(2, 0, -8)
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
@@ -80,7 +80,8 @@ class VisualConfig:
         transforms = {'different': self.different_t,
                       'constant': self.constant_t,
                       'copy': self.copy_t,
-                      'missing': self.missing_t}
+                      'missing': self.missing_t,
+                      'missing_io': self.missing_t}
         for tag in tags:
             if tag in transforms:
                 color += transforms[tag]

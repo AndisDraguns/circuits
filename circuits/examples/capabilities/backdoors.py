@@ -37,6 +37,7 @@ def get_stacked_backdoor(trigger: list[Bit],
                     ) -> Callable[[list[Bit]], list[list[Bit]]]:
     """Constructs a backdoor with payloads deployed at multiple depths."""
     # TODO: option for padding payloads to obfuscate matrix sizes
+
     group_sizes = [ceil(len(p)/k.d) for p in payloads]  # number of digests per payload
     n_digests = sum(group_sizes)
 
@@ -69,10 +70,14 @@ def get_sandbagger(
     graph = compiled(capability, inp_len)
     matrices = Matrices.from_graph(graph)
     flat = FlatCircuit.from_matrices(matrices)
+    # trigger = const([int(b.activation) for b in trigger])
+    # payloads = [const([int(b.activation) for b in p]) for p in flat.layers]
+    # stacked_backdoor = get_stacked_backdoor(trigger, payloads=payloads, k=k)
     stacked_backdoor = get_stacked_backdoor(trigger, payloads=flat.layers, k=k)
 
     def sandbagger(ambiguous_input: list[Bit], circuit_input: list[Bit]) -> list[Bit]:
         """Ambiguous bits might be the trigger that unlocks the circuit"""
+        # ambiguous_input = const([int(b.activation) for b in ambiguous_input])
         ambivalent_circuit = stacked_backdoor(ambiguous_input)  # hidden circuit if trigger is present
         circuit_output = execute_flat_circuit(circuit_input, ambivalent_circuit, flat.sizes)
         return circuit_output

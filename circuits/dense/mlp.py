@@ -105,33 +105,8 @@ class Matrices:
         """Set parameters of the model from weights and biases"""
         params = [cls.layer_to_params_2(level_out, in_w, out_w)
             for level_out, (out_w, in_w) in zip(graph.levels[1:], graph.shapes)]
-        # print(type(graph.levels[0]))
-        # print(type(len(graph.levels[0])))
-        # print("graph.shapes:", graph.shapes, len(graph.levels[0].origins))
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]
         return cls(matrices, dtype=dtype)
-
-    # @classmethod
-    # def from_blocks_2(cls, root: Block[Bit], dtype: t.dtype=t.int) -> "Matrices":
-    #     """
-    #     # Set parameters of the model from weights and biases.
-    #     Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
-    #     LTC default bias is -1.
-    #     """
-    #     from circuits.utils.bit_tracer import get_block_info_for_mlp, b_info_layer_to_params
-    #     layers, layer_shapes = get_block_info_for_mlp(root)
-    #     params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, layer_shapes)]  # w&b pairs
-
-    #     def to_dense_full_size(w: t.Tensor, x: int=root.right, y: int=root.right) -> t.Tensor:
-    #         w = w.to_dense()
-    #         pad = t.zeros(x, y)
-    #         pad[:w.shape[0], :w.shape[1]] = w
-    #         return pad
-
-    #     dense_params = [(to_dense_full_size(w, x, y), b) for (w, b), (x, y) in zip(params, layer_shapes)]
-    #     matrices = [cls.fold_bias(w, b) for w, b in dense_params]
-       
-    #     return cls(matrices, dtype=dtype)
 
 
 
@@ -159,11 +134,7 @@ class StepMLP(t.nn.Module):
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = x.type(self.dtype)
-        for i, layer in enumerate(self.net):
-            # for i, row in enumerate(layer.weight.data):
-            #     if any(row.tolist()):
-            #         print(f"layer, row={i}", Bits([int(el) for el in row.tolist()][:50]))
-            # print(f"layer {i} activations:\t", Bits([int(el) for el in x.tolist()][1:]))
+        for layer in self.net:
             x = self.activation(layer(x))
         return x
 

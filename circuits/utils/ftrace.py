@@ -83,9 +83,11 @@ class FTracer[T]:
         self.skip |= {'set_trace'}  # no need to track set_trace
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
-        def root_wrapper_fn(*args: Any, **kwargs: Any) -> Any:
-            """Wraps a function call to avoid special handling of the root call"""
-            return func(*args, **kwargs)
+        def root_wrapper_fn(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+            def root_wrapper_fn_2(*args: Any, **kwargs: Any) -> Any:
+                """Wraps a function call to avoid special handling of the root call"""
+                return func(*args, **kwargs)
+            return root_wrapper_fn_2(*args, **kwargs)
         trace = self.run_fn(root_wrapper_fn, *args, **kwargs)
         return trace
 

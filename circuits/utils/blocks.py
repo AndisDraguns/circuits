@@ -12,14 +12,15 @@ class Flow[T]:
     # Same data instance can occur at many positions, e.g. due to copying
     data: T
     block: 'Block[T]'
+    direction: Literal['in', 'out']
     indices: list[int] = field(default_factory=list[int])
     flat_index: int = 0  # Flattened index
     creator: 'Block[T] | None' = None
     prev: 'Flow[T] | None' = None  # Previous flow on the same depth
 
-    @property
-    def next_flow(self) -> 'Flow[T]':
-        return Flow[T](self.data, creator=self.creator, prev=self)
+    # @property
+    # def next_flow(self) -> 'Flow[T]':
+    #     return Flow[T](self.data, creator=self.creator, prev=self)
 
     @property
     def path(self) -> str:
@@ -60,7 +61,7 @@ class Block[T]:
     parent: 'Block[T] | None' = None
     children: list['Block[T]'] = field(default_factory=list['Block[T]'])
     creation: Flow[T] | None = None  # T created by this node, if any
-    flavour: Literal['function', 'creator', 'copy', 'input', 'output'] = 'function'
+    flavour: Literal['function', 'creator', 'copy', 'input', 'output', 'external'] = 'function'
 
     # Positioning
     # Relative to parent's bottom/left edge:
@@ -150,8 +151,8 @@ class Block[T]:
         s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
         s += f"nesting level: {self.nesting}\n"
         s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
-        inp_creator_flavours = ''.join([str(len(inp.creator.flavour)) for inp in self.inputs])
-        s += f"inp_creator_flavours: {inp_creator_flavours}\n"
+        # inp_creator_flavours = ''.join([str(len(inp.creator.flavour)) for inp in self.inputs])
+        # s += f"inp_creator_flavours: {inp_creator_flavours}\n"
         if self.tags:
             s += f"tags: {self.tags}\n"
         s += f"out_str: '{self.out_str}'\n"
@@ -179,17 +180,17 @@ class Block[T]:
                 if n.parent.counts[n.name] > 1:  # exclude count if function is only called once
                     path += f"-{n.count}"
 
-            # Get input/output flows
-
             # Create block
             b = cls(n.name, path)
-            b.inputs = OrderedSet([Flow[T](inp, b, indices, i) for i, (inp, indices) in enumerate(n.inputs)])
-            b.outputs = OrderedSet([Flow[T](out, b, indices, i) for i, (out, indices) in enumerate(n.outputs)])
+            b.inputs = OrderedSet([Flow[T](inp, b, 'in', indices, i)
+                for i, (inp, indices) in enumerate(n.inputs)])
+            b.outputs = OrderedSet([Flow[T](out, b, 'out', indices, i)
+                for i, (out, indices) in enumerate(n.outputs)])
             to_block[n] = b
 
             # Mark creation
             if n.creation is not None:
-                b.creation = Flow[T](n.creation, b, creator=b)
+                b.creation = Flow[T](n.creation, b, 'out', creator=b)
                 b.flavour = 'creator'
             
             # Add parent
@@ -198,8 +199,11 @@ class Block[T]:
                 b.parent.children.append(b)
             assert b.parent is None or not b.parent.creation, "type T __init__ subcalls should be added to skip set"
 
-        to_block[root_node].path = "root_wrapper"
-        return to_block[root_node]
+        root = to_block[root_node]
+        root.path = "root_wrapper"
+
+        return root
+
 
 
 def get_lca_children_split[T](x: Block[T], y: Block[T]) -> tuple[Block[T], Block[T]]:
@@ -212,7 +216,7 @@ def get_lca_children_split[T](x: Block[T], y: Block[T]) -> tuple[Block[T], Block
     for i in range(min(len(x_path), len(y_path))):
         if x_path[i] != y_path[i]:
             return x_path[i], y_path[i]  # Found the first mismatch, return lca_child_to_x, lca_child_to_y
-    raise ValueError("x and y are on the same path to root")
+    raise ValueError(f"x and y are on the same path to root x={x.path}, y={y.path}")
 
 
 def update_ancestor_depths[T](b: Block[T]) -> None:
@@ -220,7 +224,11 @@ def update_ancestor_depths[T](b: Block[T]) -> None:
     for inp in b.inputs:
         if inp.creator is None:
             continue
-        b_ancestor, creator_ancestor = get_lca_children_split(b, inp.creator)
+        try:
+            b_ancestor, creator_ancestor = get_lca_children_split(b, inp.creator)
+        except:
+            print(f"update_ancestor_depths failed on b={b.path}")
+            continue
         if not 'constant' in creator_ancestor.tags:
             b.tags.discard('constant')  # node is downstream from inputs, not constant
         if b_ancestor.bot < creator_ancestor.top:  # current block must be above the parent block
@@ -261,8 +269,10 @@ def add_copies_to_block[T](b: Block[T]) -> None:
     for c in b.children:
         required[c.bot] |= c.inputs
         available[c.top] |= c.outputs
-        if c.flavour == 'creator':
+        if c.flavour in {'creator', 'external'}:
             available[c.top].add(c.creation)
+            if c.flavour == 'external':
+                print(c.path)
 
     # descend from top to bot
     n_copies = 0
@@ -277,8 +287,8 @@ def add_copies_to_block[T](b: Block[T]) -> None:
                 # create a copy
                 copy = Block[T]("copy", b.path+".copy", parent=b, flavour='copy', tags={'copy'})
                 b.children.append(copy)
-                outflow = Flow[T](req.data, copy, creator=copy, prev=None)  # no prev
-                inflow = Flow[T](req.data, copy, creator=req.creator)  # prev to be set later, creator maybe
+                outflow = Flow[T](req.data, copy, 'out', creator=copy, prev=None)  # no prev
+                inflow = Flow[T](req.data, copy, 'in', creator=req.creator)  # prev to be set later, creator maybe
                 copy.outputs.add(outflow)
                 copy.inputs.add(inflow)
                 copy.original = req.block.original if req.block.original is not None else req.creator
@@ -307,7 +317,7 @@ def create_input_blocks[T](root: Block[T]) -> list[Block[T]]:
     inp_blocks: list[Block[T]] = []
     for j, flow in enumerate(root.inputs):
         b = Block[T]('input', f'input[{j}]', flavour='input', tags={'input'}, abs_x=j)
-        b.creation=Flow[T](flow.data, b, creator=b, prev=None)
+        b.creation=Flow[T](flow.data, b, 'out', creator=b, prev=None)
         flow.prev = b.creation
         flow.creator = b
         inp_blocks.append(b)
@@ -321,12 +331,121 @@ def set_flow_creator_for_io_of_each_block[T](root: Block[T], inp_blocks: list[Bl
         assert flow is not None
         flow.creator = inp_b
         to_block[flow.data] = inp_b
-    for b in traverse(root, 'return'):
+
+    for b in traverse(root):
         if b.creation:
             to_block[b.creation.data] = b
+    for b in traverse(root, 'return'):        
         for flow in b.inputs | b.outputs:
             if flow.creator is None:
+                if flow.data not in to_block:
+                    print(f"This block has io created outside of the tree: {b.path} at index {flow.flat_index}")
+                    b.tags.add('missing_io')
                 flow.creator = to_block[flow.data]
+                # if to_block[flow.data].name == 'external':
+                #     print(b.path)
+
+        # for flow in b.inputs | b.outputs:
+        #     if flow.creator is None:
+        #         if flow.data not in to_block:
+        #             # raise ValueError(f"This block has io created outside of the tree: {b.path}")
+        #             print(f"This block has io created outside of the tree: {b.path}")
+        #             b.tags.add('missing_io')
+        #         else:
+        #             flow.creator = to_block[flow.data]
+        #         # flow.creator = to_block[flow.data]
+
+
+
+def create_io_blocks[T](root: Block[T]):
+    # create input blocks
+    input_blocks = []
+    for j, flow in enumerate(root.inputs):
+        b = Block[T]('input', f'input[{j}]', flavour='input', tags={'input'}, abs_x=j)
+        b.creation=Flow[T](flow.data, b, 'out', creator=b, prev=None)
+        flow.prev = b.creation
+        flow.creator = b
+        # b.tags.add('missing')
+        # root.children[0].children.append(b)
+        b.parent = root.children[0]
+        input_blocks.append(b)
+    root.children[0].children = input_blocks + root.children[0].children
+        # root.children.append(b)
+        # b.parent = root
+        # print("added inp")
+        # root.children.append(b)
+
+    # create output blocks
+    for j, flow in enumerate(root.children[0].outputs):
+        b = Block[T]('output', f'output[{j}]', flavour='output', tags={'output'}, abs_x=j)
+        b.inputs = OrderedSet([Flow[T](flow.data, b, 'in', creator=flow.creator, prev=flow)])
+        b.outputs = OrderedSet([Flow[T](flow.data, b, 'out', creator=flow.creator, prev=None)])
+        b.tags.add('missing')
+        root.children[0].children.append(b)
+        b.parent = root.children[0]
+        # root.children.append(b)
+        # b.parent = root
+        # print("added out")
+        # root.children.append(b)
+
+    # record known instance creators
+    inst_to_block: dict[T, Block[T]] = {}
+    for b in traverse(root, 'return'):
+        if b.creation:
+            inst_to_block[b.creation.data] = b
+    
+    # find missing io
+    missing_io = OrderedSet()
+    for b in traverse(root, 'return'):
+        for flow in b.inputs | b.outputs:
+            if flow.creator is None:
+                if flow.data not in inst_to_block:
+                    b.tags.add('missing_io')
+                    missing_io.add(flow.data)
+                    # inst_to_block[flow.data] = 
+
+    # add missing io
+    missing = []
+    for j, inst in enumerate(missing_io):
+        b = Block[T]('external', f'external[{j}]', flavour='external', tags={'external'})
+        b.creation = Flow[T](inst, b, 'out', creator=b, prev=None)
+        # b.outputs = OrderedSet([Flow[T](flow.data, b, 'out', creator=b, prev=b.creation)])
+        # root.children.append(b)
+        b.tags.add('missing')
+        # root.children[0].children = [b] + root.children[0].children
+        root.children[0].children.append(b)
+        b.parent = root.children[0]
+        missing.append(b)
+        inst_to_block[inst] = b
+    # root.children[0].children = missing + root.children[0].children
+    # root.children[0].children += missing
+        # root.children.append(b)
+        # b.parent = root
+        # print("added external")
+        # root.children.append(b)
+
+    # add external to fn inputs
+    for b in traverse(root):
+        if 'missing_io' in b.tags:
+            for flow in b.inputs | b.outputs:
+                for anc in reversed(b.path_from_root[:-2]):  # exclude wrappers
+                    try:
+                        anc.inputs.add(Flow[T](flow.data, anc, 'in', flat_index = len(anc.inputs), creator=inst_to_block[flow.data]))
+                    except:
+                        print(b.path)
+    # assert False
+
+    # for b in missing:
+    
+
+    # root.children[0].inputs = OrderedSet()
+    inps = list(root.children[0].inputs)
+    for inp in inps:
+        if inp.creator is not None:
+            if inp.creator.flavour == 'external':
+                root.children[0].inputs.discard(inp)
+    #         print(inp.creator.path)
+    # root.children[0].inputs = [inp for inp in root.children[0].inputs if inp.creator.flavour != 'external']
 
 
 from typing import Any
@@ -343,11 +462,12 @@ class Tracer[T]:
         ftracer = FTracer[T](self.tracked_type, self.collapse, self.skip)
         node = ftracer.run(func, *args, **kwargs)
         b = Block[T].from_root_node(node)
+        create_io_blocks(b)
         self.set_layout(b)
         self.set_layout(b)
         self.set_layout(b)
         self.delete_zero_h_blocks(b)
-        add_copies(b)
+        # add_copies(b)
         self.set_layout(b)
         self.set_layout(b)
         self.set_formatting_info(b)
@@ -374,7 +494,7 @@ class Tracer[T]:
         for b in traverse(root, order='return'):
 
             # Set creator/copy size to 1x1
-            if b.flavour in {'creator', 'copy'}:
+            if b.flavour in {'creator', 'copy', 'input', 'output', 'external'}:
                 b.top = b.bot + 1
                 b.right = b.left + 1
 
@@ -420,6 +540,10 @@ class Tracer[T]:
     def set_formatting_info(self, root: Block[T]) -> None:
         for b in traverse(root):
             b.nesting = b.parent.nesting + 1 if b.parent else -1
+            # if b.flavour in {'input', 'output', 'external'}:
+            #     print(b.nesting, b.flavour, b.path, b.parent.path)
+            # if b.flavour in {'input', 'output', 'external'}:
+            #     print(b.nesting, b.flavour, b.path, b.parent.path, b.abs_x, b.abs_y)
         for b in traverse(root, 'return'):
             b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
             b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
