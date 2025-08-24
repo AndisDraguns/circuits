@@ -10,6 +10,7 @@ from circuits.utils.format import Bits
 
 from circuits.neurons.core import Bit
 from circuits.utils.blocks import Block
+from circuits.utils.compile import BlockGraph
 
 
 
@@ -20,11 +21,7 @@ class Matrices:
 
     @classmethod
     def from_graph(cls, graph: Graph, dtype: t.dtype=t.int) -> "Matrices":
-        """
-        # Set parameters of the model from weights and biases.
-        Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
-        LTC default bias is -1.
-        """
+        """Set parameters of the model from weights and biases"""
         layers = graph.layers[1:]  # skip input layer as it has no incoming weights
         sizes_in = [len(l) for l in graph.layers]  # incoming weight sizes
         params = [cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
@@ -35,7 +32,11 @@ class Matrices:
     @staticmethod
     def layer_to_params(layer: list[Node], size_in: int, dtype: t.dtype, debias: bool = True
                         ) -> tuple[t.Tensor, t.Tensor]:
-        """Convert layer to a sparse weight matrix and dense bias matrix"""
+        """
+        Convert layer to a sparse weight matrix and dense bias matrix
+        Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
+        Linear Threshold Circuits use a default threshold of >=0, i.e. bias = -1.
+        """
         row_idx: list[int] = []
         col_idx: list[int] = []
         val_lst: list[int | float] = []
@@ -51,14 +52,39 @@ class Matrices:
         b = t.tensor([node.bias for node in layer], dtype=dtype)
         if debias:
             b += 1
-        # TODO: sparse biases
+        return w_sparse, b
+
+    from circuits.utils.graph import Level
+    @classmethod
+    def layer_to_params_2(
+            cls,
+            level: Level,
+            size_in: int,
+            size_out: int,
+            dtype: t.dtype = t.int,
+            debias: bool = True
+        ) -> "Matrices":
+
+        row_idx: list[int] = []
+        col_idx: list[int] = []
+        val_lst: list[int | float] = []
+        for origin in level.origins:
+            for p in origin.incoming:
+                row_idx.append(origin.index)
+                col_idx.append(p.index)
+                val_lst.append(p.weight)
+        indices = t.tensor([row_idx, col_idx], dtype=t.long)
+        values = t.tensor(val_lst, dtype=dtype)
+        w_sparse = t.sparse_coo_tensor(indices, values, (size_out, size_in), dtype=dtype)  # type: ignore
+        b = t.tensor([origin.bias for origin in level.origins], dtype=dtype)
+        if debias:
+            b += 1
         return w_sparse, b
 
     @staticmethod
     def fold_bias(w: t.Tensor, b: t.Tensor) -> t.Tensor:
         """Folds bias into weights, assuming input feature at index 0 is always 1."""
-        # print("w and b sizes:", w.shape, b.shape, flush=True)
-        # assert False
+        # print("w.shape, b.shape", w.shape, b.shape)
         one = t.ones(1, 1)
         zeros = t.zeros(1, w.size(1))
         # assumes row vector bias that is transposed during forward pass
@@ -75,49 +101,37 @@ class Matrices:
         return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
 
     @classmethod
-    def from_blocks(cls, root: Block[Bit], dtype: t.dtype=t.int) -> "Matrices":
-        """
-        # Set parameters of the model from weights and biases.
-        Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
-        LTC default bias is -1.
-        """
-        from circuits.utils.bit_tracer import get_block_info_for_mlp, b_info_layer_to_params
-        layers, layer_shapes = get_block_info_for_mlp(root)
-        # layers = layers  # skip input layer as it has no incoming weights
-        # sizes_in = [len(l) for l in layers]  # incoming weight sizes
-        # sizes_in = [25]+[root.right]*len(layers[1:])  # incoming weight sizes
-        # sizes_in = [7]+[root.right]*len(layers[1:])  # incoming weight sizes
-        params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, layer_shapes)]  # w&b pairs
-        # print(params[0][0].shape)
-        def to_dense_full_size(w: t.Tensor, x: int=root.right, y: int=root.right) -> t.Tensor:
-            w = w.to_dense()
-            pad = t.zeros(x, y)
-            # print("pad shape:", pad.shape[0], pad.shape[1])
-            # print("w shape:", w.shape[0], w.shape[1])
-            pad[:w.shape[0], :w.shape[1]] = w
-            return pad
-
-        # layer_sizes = [(x,y) for x, y in zip(sizes_in[:-1], sizes_in[1:])]
-        # print("layer_shapes =", layer_shapes)
-        dense_params = [(to_dense_full_size(w, x, y), b) for (w, b), (x, y) in zip(params, layer_shapes)]
-        # print("dense_params w shapes = ", [w.shape for w, _ in dense_params])
-
-        # matrices = [cls.fold_bias(to_dense_full_size(params[0][0], 7, root.right), params[0][1])]  # dense matrices
-        # matrices += [cls.fold_bias(to_dense_full_size(w), b) for w, b in params[1:]]  # dense matrices
-        # matrices = [cls.fold_bias(w, b) for w, b in dense_params]  # dense matrices
-        # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
-        matrices = []
-        for i, (w, b) in enumerate(dense_params):
-            # print(f"layer {i}")
-            matrices.append(cls.fold_bias(w, b))
-
-        # print("matrices[-1] = ")
-        # for j, row in enumerate(matrices[-1]):
-        #     if any(row.tolist()):
-        #         print(j, Bits([int(el) for el in row.tolist()]))
-        # assert False
-       
+    def from_blocks(cls, graph: BlockGraph, dtype: t.dtype=t.int) -> "Matrices":
+        """Set parameters of the model from weights and biases"""
+        params = [cls.layer_to_params_2(level_out, in_w, out_w)
+            for level_out, (out_w, in_w) in zip(graph.levels[1:], graph.shapes)]
+        # print(type(graph.levels[0]))
+        # print(type(len(graph.levels[0])))
+        # print("graph.shapes:", graph.shapes, len(graph.levels[0].origins))
+        matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]
         return cls(matrices, dtype=dtype)
+
+    # @classmethod
+    # def from_blocks_2(cls, root: Block[Bit], dtype: t.dtype=t.int) -> "Matrices":
+    #     """
+    #     # Set parameters of the model from weights and biases.
+    #     Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
+    #     LTC default bias is -1.
+    #     """
+    #     from circuits.utils.bit_tracer import get_block_info_for_mlp, b_info_layer_to_params
+    #     layers, layer_shapes = get_block_info_for_mlp(root)
+    #     params = [b_info_layer_to_params(l, s, dtype) for l, s in zip(layers, layer_shapes)]  # w&b pairs
+
+    #     def to_dense_full_size(w: t.Tensor, x: int=root.right, y: int=root.right) -> t.Tensor:
+    #         w = w.to_dense()
+    #         pad = t.zeros(x, y)
+    #         pad[:w.shape[0], :w.shape[1]] = w
+    #         return pad
+
+    #     dense_params = [(to_dense_full_size(w, x, y), b) for (w, b), (x, y) in zip(params, layer_shapes)]
+    #     matrices = [cls.fold_bias(w, b) for w, b in dense_params]
+       
+    #     return cls(matrices, dtype=dtype)
 
 
 
@@ -144,7 +158,6 @@ class StepMLP(t.nn.Module):
         self.activation = step_fn
 
     def forward(self, x: t.Tensor) -> t.Tensor:
-        # assert False
         x = x.type(self.dtype)
         for i, layer in enumerate(self.net):
             # for i, row in enumerate(layer.weight.data):
@@ -176,7 +189,6 @@ class StepMLP(t.nn.Module):
     def from_blocks(cls, root: Block[Bit]) -> "StepMLP":
         matrices = Matrices.from_blocks(root)
         mlp = cls(matrices.sizes)
-        # print("matrices.mlist lens:", [len(el) for el in matrices.mlist])
         mlp.load_params(matrices.mlist)
         return mlp
 

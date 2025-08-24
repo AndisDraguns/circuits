@@ -305,6 +305,9 @@ class Graph:
         )
 
 
+    # def 
+
+
 
 def compiled_from_io(inputs: list[Signal], outputs: list[Signal]) -> Graph:
     """Compiles a graph for function f using dummy input and output=f(input)."""

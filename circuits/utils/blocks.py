@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from collections.abc import Callable, Generator
-from typing import Literal
+from typing import Literal, Any
 
 from circuits.utils.misc import OrderedSet
 from circuits.utils.ftrace import CallNode
@@ -50,9 +50,6 @@ class Flow[T]:
         return res
 
 
-
-
-
 @dataclass(eq=False)
 class Block[T]:
     """Represents a function call with its Signal inputs/outputs"""
@@ -84,6 +81,8 @@ class Block[T]:
     nesting: int = 0  # Nesting level of the block in the call tree
     max_leaf_nesting: int = -1
     original: 'Block[T] | None' = None  # original creator of copy
+
+    info: dict[str, Any] = field(default_factory=dict[str, Any])  # for storing additional info
 
 
     @property
