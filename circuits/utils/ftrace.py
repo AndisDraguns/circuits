@@ -54,7 +54,7 @@ def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]
             if isinstance(item, dict):
                 item = item.values()  # type: ignore
             for i, elem in enumerate(item):  # type: ignore
-                next_indices = indices + [i] if len(item) > 1 else indices
+                next_indices = indices + [i] if len(item) > 1 else indices  # type: ignore
                 search(elem, next_indices)
                 # TODO: kwargs indices to save memory
 
@@ -81,13 +81,16 @@ class FTracer[T]:
     def __post_init__(self) -> None:
         self.collapse |= {'<genexpr>'}  # avoids handling generator interactions with stack
         self.skip |= {'set_trace'}  # no need to track set_trace
+        if 'gate' in self.collapse:
+            self.collapse.remove('gate')
+            print("removed gate from collapse")
+        # assert 'gate' in self.collapse, "collapse should include gate"
+        # assert '__init__' not in self.skip, "skip should not include __init__"
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
-        def root_wrapper_fn(*args: Any, **kwargs: Any) -> Callable[..., Any]:
-            def root_wrapper_fn_2(*args: Any, **kwargs: Any) -> Any:
-                """Wraps a function call to avoid special handling of the root call"""
-                return func(*args, **kwargs)
-            return root_wrapper_fn_2(*args, **kwargs)
+        def root_wrapper_fn(*args: Any, **kwargs: Any) -> Any:
+            """Wraps a function call to avoid special handling of the root call"""
+            return func(*args, **kwargs)
         trace = self.run_fn(root_wrapper_fn, *args, **kwargs)
         return trace
 
@@ -123,8 +126,7 @@ class FTracer[T]:
                     skipping = True
                     skipped_frame_id = id(frame)
                     return trace_handler
-                is_creator = self.inits_tracked_type(frame)
-                if fn_name in self.collapse and not is_creator:
+                if fn_name in self.collapse:
                     return trace_handler  # Continue tracing children, but don't create a node
 
                 # Create a new node
@@ -140,10 +142,6 @@ class FTracer[T]:
                     inputs = [value for _, value in loc.items()]
                 node.inputs = find_instances(inputs, self.tracked_type)
 
-                # Record T created by T.__init__
-                if is_creator:
-                    node.creation = loc['self']
-
                 return trace_handler
 
 
@@ -158,7 +156,7 @@ class FTracer[T]:
                     return trace_handler
                 if skipping:
                     return trace_handler
-                if fn_name in self.collapse and not self.inits_tracked_type(frame):
+                if fn_name in self.collapse:
                     return trace_handler
 
                 # Remove node
@@ -166,6 +164,26 @@ class FTracer[T]:
 
                 # Record outputs
                 node.outputs = find_instances(arg, self.tracked_type)
+
+                # Record T created by T.__init__
+                if node.name == 'gate':
+                    assert len(node.outputs) == 1, f"gate {node.name} has {len(node.outputs)} outputs"
+                    node.creation = node.outputs[0][0]
+                    # TODO: make this general
+                
+                # is_creator = self.inits_tracked_type(frame)
+                # if is_creator:
+                #     node.creation = frame.f_locals['self']
+                #     assert node.creation is not None, f"node {node.name} has no creation. {node.parent}"
+
+                # if node.name == 'gate':
+                #     assert len(node.outputs) == 1, f"gate {node.name} has {len(node.outputs)} outputs"
+                #     init_node = node.children[0]
+                #     if init_node.creation is None:
+                #         print(frame.f_code.co_filename, frame.f_lineno)
+                #         print(frame.f_code)
+                #     assert init_node.creation is not None, f"node's {node.name} child {init_node.name} has no creation. gate outputs: {node.outputs}. {frame.f_code.co_filename}:{frame.f_lineno}"
+
                 return trace_handler
 
             return trace_handler
@@ -174,7 +192,8 @@ class FTracer[T]:
         original_trace = sys.gettrace()
         try:
             set_trace(trace_handler)
-            _ = func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            root_wrapper.outputs = find_instances(result, self.tracked_type)
         finally:
             set_trace(original_trace)
 

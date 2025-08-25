@@ -6,14 +6,15 @@ from circuits.utils.graph import Graph, Level, Origin, Parent
 from circuits.neurons.core import Bit
 from circuits.utils.blocks import Block, traverse
 from circuits.utils.bit_tracer import BitTracer
-from circuits.utils.format import Bits, bitfun
+from circuits.utils.format import Bits
+# from circuits.utils.format import bitfun
 
 
 @dataclass(frozen=True)
 class BlockGraph(Graph):
     # TODO: reform as not a graph subclass but w .graph property
-    root: Block[Bit]
-    origin_blocks: list[list[Block[Bit]]]
+    root: Block
+    origin_blocks: list[list[Block]]
 
     @classmethod
     def compile(cls, function: Callable[..., list[Bit]], input_len: int, **kwargs: Any) -> Graph:
@@ -27,8 +28,8 @@ class BlockGraph(Graph):
         levels = [Level([b.info['origin'] for b in level]) for i, level in enumerate(origin_blocks)]
         return cls(root = root, origin_blocks = origin_blocks, levels = levels)
 
-
-    def set_origins(root: Block[Bit]) -> list[Block[Bit]]:
+    @staticmethod
+    def set_origins(root: Block) -> list[list[Block]]:
         depth = root.top + 2  # +2 for including inputs and outputs
         levels = [[] for _ in range(depth)]
 
@@ -77,8 +78,8 @@ class BlockGraph(Graph):
 
         return levels
 
-
-    def set_narrow_origins(origin_blocks: list[list[Block[Bit]]]) -> None:
+    @staticmethod
+    def set_narrow_origins(origin_blocks: list[list[Block]]) -> None:
         to_narrow_index: dict[tuple[int, int], int] = dict()
         for i, level in enumerate(origin_blocks):
             for j, b in enumerate(level):

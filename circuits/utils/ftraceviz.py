@@ -92,7 +92,7 @@ class VisualConfig:
         return color
 
 
-def generate_block_html[T](b: Block[T], config: VisualConfig, 
+def generate_block_html(b: Block, config: VisualConfig, 
                         max_nesting: int, root_dims: tuple[float, float]) -> str:
     """Generate HTML for a single block and its children"""
     if b.name in {'__init__', 'outgoing'}:
@@ -229,7 +229,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def visualize[T](b: Block[T],
+def visualize(b: Block,
                       filename: str = "index.html",
                       config: VisualConfig | None = None) -> None:
     """Generate and save visualization to file"""
@@ -249,7 +249,7 @@ if __name__ == '__main__':
     def f(m: Bits, k: Keccak) -> list[Bit]:
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = Tracer[Bit](Bit)
+    tracer = Tracer()
    
     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
     b1 = tracer.run(f, m=msg1, k=k)

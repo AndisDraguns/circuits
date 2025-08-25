@@ -27,4 +27,4 @@ class Graph:
     @property
     def shapes(self) -> tuple[tuple[int, int], ...]:
         widths = [len(level.origins) for level in self.levels]
-        return [(out_w, inp_w) for out_w, inp_w in zip(widths[1:], widths[:-1])]
+        return tuple([(out_w, inp_w) for out_w, inp_w in zip(widths[1:], widths[:-1])])

@@ -7,11 +7,7 @@ import torch.nn.functional as F
 
 from circuits.sparse.compile import Graph, Node
 from circuits.utils.format import Bits
-
-from circuits.neurons.core import Bit
-from circuits.utils.blocks import Block
 from circuits.utils.compile import BlockGraph
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +59,7 @@ class Matrices:
             size_out: int,
             dtype: t.dtype = t.int,
             debias: bool = True
-        ) -> "Matrices":
+        ) -> tuple[t.Tensor, t.Tensor]:
 
         row_idx: list[int] = []
         col_idx: list[int] = []
@@ -157,8 +153,8 @@ class StepMLP(t.nn.Module):
         return mlp
 
     @classmethod
-    def from_blocks(cls, root: Block[Bit]) -> "StepMLP":
-        matrices = Matrices.from_blocks(root)
+    def from_blocks(cls, graph: BlockGraph) -> "StepMLP":
+        matrices = Matrices.from_blocks(graph)
         mlp = cls(matrices.sizes)
         mlp.load_params(matrices.mlist)
         return mlp
