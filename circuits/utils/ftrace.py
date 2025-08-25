@@ -84,8 +84,6 @@ class FTracer[T]:
         if 'gate' in self.collapse:
             self.collapse.remove('gate')
             print("removed gate from collapse")
-        # assert 'gate' in self.collapse, "collapse should include gate"
-        # assert '__init__' not in self.skip, "skip should not include __init__"
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> CallNode[T]:
         def root_wrapper_fn(*args: Any, **kwargs: Any) -> Any:
@@ -169,20 +167,7 @@ class FTracer[T]:
                 if node.name == 'gate':
                     assert len(node.outputs) == 1, f"gate {node.name} has {len(node.outputs)} outputs"
                     node.creation = node.outputs[0][0]
-                    # TODO: make this general
-                
-                # is_creator = self.inits_tracked_type(frame)
-                # if is_creator:
-                #     node.creation = frame.f_locals['self']
-                #     assert node.creation is not None, f"node {node.name} has no creation. {node.parent}"
-
-                # if node.name == 'gate':
-                #     assert len(node.outputs) == 1, f"gate {node.name} has {len(node.outputs)} outputs"
-                #     init_node = node.children[0]
-                #     if init_node.creation is None:
-                #         print(frame.f_code.co_filename, frame.f_lineno)
-                #         print(frame.f_code)
-                #     assert init_node.creation is not None, f"node's {node.name} child {init_node.name} has no creation. gate outputs: {node.outputs}. {frame.f_code.co_filename}:{frame.f_lineno}"
+                    # TODO: make this more general
 
                 return trace_handler
 

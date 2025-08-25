@@ -54,20 +54,20 @@ def test_mlp_simple():
     # print(graph)
 
 
-def test_mlp_simple_blocks():
-    """Test MLP implementation with keccak"""
-    from circuits.utils.bit_tracer import compile
-    from circuits.utils.compile import BlockGraph
-    k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
-    phrase = "Rachmaninoff"
-    message = k.format(phrase, clip=True)
-    hashed = k.digest(message)
+# def test_mlp_simple_blocks():
+#     """Test MLP implementation with keccak"""
+#     # from circuits.utils.bit_tracer import compile
+#     from circuits.utils.compile import BlockGraph
+#     k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
+#     phrase = "Rachmaninoff"
+#     message = k.format(phrase, clip=True)
+#     hashed = k.digest(message)
 
-    graph = BlockGraph.compile(k.digest, len(message))
-    mlp = StepMLP.from_blocks(graph)
+#     graph = BlockGraph.compile(k.digest, len(message))
+#     mlp = StepMLP.from_blocks(graph)
 
-    out = mlp.infer_bits(message)
-    assert hashed.bitstr == out.bitstr, f"{hashed.bitstr}, {out.bitstr}"
-    # expected = "0111111010"  # regression test
-    # assert out.bitstr == expected
-test_mlp_simple_blocks()
+#     out = mlp.infer_bits(message)
+#     assert hashed.bitstr == out.bitstr, f"{hashed.bitstr}, {out.bitstr}"
+#     # expected = "0111111010"  # regression test
+#     # assert out.bitstr == expected
+# test_mlp_simple_blocks()

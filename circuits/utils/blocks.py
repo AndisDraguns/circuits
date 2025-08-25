@@ -151,10 +151,6 @@ class Block:
         s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
         s += f"nesting level: {self.nesting}\n"
         s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
-        # inp_creator_flavours = ''.join([str(len(inp.creator.flavour)) for inp in self.inputs])
-        # s += f"inp_creator_flavours: {inp_creator_flavours}\n"
-        if 'nr_missing' in self.info:
-            s += f"nr_missing: {self.info['nr_missing']}\n"
         if self.original:
             s += f"original: {self.original.path}\n"
         if self.tags:
@@ -194,22 +190,15 @@ class Block:
 
             # Mark gates
             if n.name == 'gate':
-                # assert len(n.children) == 1, f"Gate {b.path} has {len(n.children)} children: {[c.name for c in n.children]}"
-                # init_node = n.children[0]  # gate always has exactly 1 child
-                # assert init_node.creation is not None, f"gate's init_node {init_node.name} has no creation. {b.path}"
-                # b.outputs = OrderedSet([Flow(init_node.creation, b, 'out')])
                 assert n.creation is not None, f"gate {b.path} has no creation"
                 b.outputs = OrderedSet([Flow(n.creation, b, 'out')])
                 b.flavour = 'creator'
                 b.is_creator = True
-                b.children = []  # not tracking gate subcalls
 
             # Add parent
-            if n.parent:
+            if n.parent and n.parent.name != 'gate':  # not tracking gate subcalls
                 b.parent = node_to_block[n.parent]
                 b.parent.children.append(b)
-                # if n.parent.name == 'gate':  # delete gate subcalls
-                #     b.parent.children = []
 
         root = node_to_block[root_node]
         root.name = "root"
@@ -238,17 +227,7 @@ def update_ancestor_depths(b: Block) -> None:
     for inflow in b.inputs:
         if inflow.creator is None:
             continue
-        # if b.path.split('.')[-1] == 'copy-1020':
-        #     print(f"b={b.path}, inflow={inflow.path}")
-        #     print(f"b.inputs={b.inputs}")
-        #     print(f"inflow.creator={inflow.creator.path}")
-        #     assert False
         b_ancestor, creator_ancestor = get_lca_children_split(b, inflow.creator)
-        # try:
-        #     b_ancestor, creator_ancestor = get_lca_children_split(b, inflow.creator)
-        # except:
-        #     print(f"update_ancestor_depths failed on b={b.path}")
-        #     continue
         if b_ancestor.bot < creator_ancestor.top:  # current block must be above the parent block
             h_change = creator_ancestor.top - b_ancestor.bot
             b_ancestor.bot += h_change
@@ -333,6 +312,7 @@ def add_copies_to_block(b: Block) -> None:
     for copy in reversed(copies):
         b.children.append(copy)
 
+
 def add_copy_blocks(root: Block) -> None:
     for b in traverse(root, 'return'):
         add_copies_to_block(b)
@@ -360,7 +340,6 @@ def set_flow_creator_for_io_of_each_block(root: Block) -> None:
                     b.tags.add('missing_io')
                 else:
                     flow.creator = bit_to_block[flow.data]
-
 
 
 
@@ -450,60 +429,26 @@ def add_blocks_for_untraced_bits(root: Block) -> None:
         frontier = new_frontier
     assert len(live_untraced_bits) == 0, "Live untraced bits are currently unsupported"
 
-    # create blocks for untraced bits
-    # untraced_blocks: list[Block] = []
-    # for bit in untraced_bits:
-    #     b = Block("gate", "tbd", is_creator=True, flavour='untraced', tags={'constant', 'untraced'})
-    #     b.outputs = OrderedSet([Flow(bit, b, 'out')])
-    #     b.inputs = OrderedSet([Flow(p, b, 'out') for p in bit.source.incoming])
-    #     bit_to_block[bit] = b
-    #     untraced_blocks.append(b)
-
-    # find where other blocks require untraced blocks
-    # untraced_required: dict[Bit, OrderedSet[Block]] = {b: OrderedSet() for b in untraced_bits}
+    # fold untraced bits into gate biases
     for b in traverse(root, 'call'):
         inflows = b.inputs
         for j, inflow in enumerate(list(inflows)):
             if inflow.data in untraced_bits:
+
+                # fold untraced bit into gate bias
                 if b.name == 'gate':
-                    # assert b.creation is not None
                     untraced_w = b.creation.data.source.weights[j]
                     untraced_value = b.creation.data.source.incoming[j].activation
                     b.origin = Origin(0, (), int(untraced_value * untraced_w))
-                    # b.origin.
-                #     # assert b.parent is not None
-                #     untraced_required[inflow.data].add(b)
-                # else:
-                    # remove from inputs
+                    b.tags.add('untraced')
+
+                # remove from inputs
                 b.inputs.remove(inflow)
-                b.tags.add('untraced')
+
         outflows = b.outputs
         for outflow in list(outflows):
             if outflow.data in untraced_bits:
                 b.outputs.remove(outflow)
-                # if b.name == 'gate':
-                #     untraced_required[outflow.data].add(b)
-                # else:
-                    # remove from outputs
-
-    # # create an constant untraced bit block for each of its required locations
-    # for bit in untraced_bits:
-    #     for req in untraced_required[bit]:
-    #         assert req.parent is not None
-    #         # req_parent = req.parent
-    #         # if req.name != 'gate':
-    #         b = Block("untraced", req.parent.path+".untraced", is_creator=True, flavour='untraced', tags={'untraced'})
-    #         b.outputs = OrderedSet([Flow(bit, b, 'out')])
-    #         b.parent = req.parent
-    #         # if req.name == 'sandbagger':
-    #         #     print(f"adding untraced bit to {req.path}")
-    #         #     assert False
-    #         gate_idx =req.parent.children.index(req)
-    #         req.parent.children = req.parent.children[:gate_idx] + [b] + req.parent.children[gate_idx:]
-    #         # req.parent.children = req.parent.children[:gate_idx-1] + [b] + req.parent.children[gate_idx-1:]
-    #         # req.parent.children.append(b)
-    #         # req.children = [b] + req.children
-            
 
 
 
@@ -525,7 +470,6 @@ class Tracer:
         self.set_layout(r)
         self.delete_zero_h_blocks(r)
         add_copy_blocks(r)
-        self.set_layout(r)
         self.set_layout(r)
         self.set_formatting_info(r)
         return r
@@ -593,10 +537,13 @@ class Tracer:
 
 
     def set_formatting_info(self, root: Block) -> None:
+        # set nesting depth info
         for b in traverse(root):
             b.nesting = b.parent.nesting + 1 if b.parent else 0
         for b in traverse(root, 'return'):
             b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
+
+            # set output string
             b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
             
             # set live/constant tags
@@ -610,36 +557,8 @@ class Tracer:
                     assert inflow.creator.original is not None
                     if 'live' in inflow.creator.original.tags:
                         b.tags.add('live')
-                # if inflow.creator.flavour == 'untraced':
-                #     print(f"untraced bit in {b.path} inflow. btags={b.tags}; {[inp.creator.tags for inp in b.inputs]}")
-        
-        # for b in traverse(root, 'return'):
-        #     if b.flavour == 'input':
-        #         b.tags.add('live')
-        #     for inflow in b.inputs:
-        #         assert inflow.creator is not None
-        #         if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
-        #             b.tags.add('live')
-        
         for b in traverse(root):
-            # for inflow in b.inputs:
-                # if inflow.creator.flavour == 'untraced':
-                #     print(f"second: untraced bit in {b.path} inflow. btags={b.tags}; {[inp.creator.tags for inp in b.inputs]}")
             if not 'live' in b.tags:
                 b.tags.add('constant')
             b.tags.discard('live')
         root.tags.discard('constant')
-
-        # c_names: dict[str, int] = dict()
-        # for b in traverse(root):
-        #     if b.name == 'xof':
-        #         for c in b.children:
-        #             if c.name not in c_names:
-        #                 c_names[c.name] = 0
-        #             c_names[c.name] += 1
-        # print(c_names)
-                # print("len(b.children)", len(b.children))
-
-            # if b.path == 'f.digest.hash_state.round-1.theta.xor-3.gate-3':
-                # for inp in b.inputs:
-                #     print(inp.path)
