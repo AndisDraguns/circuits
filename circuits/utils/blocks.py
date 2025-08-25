@@ -5,6 +5,7 @@ from typing import Literal, Any
 from circuits.utils.misc import OrderedSet
 from circuits.utils.ftrace import CallNode
 from circuits.neurons.core import Bit
+from circuits.utils.graph import Origin
 
 
 @dataclass(eq=False)
@@ -83,6 +84,8 @@ class Block:
     original: 'Block | None' = None  # original creator of copy
 
     info: dict[str, Any] = field(default_factory=dict[str, Any])  # for storing additional info
+    
+    origin: Origin = Origin(0, (), 0)
 
 
     @property
@@ -150,6 +153,10 @@ class Block:
         s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
         # inp_creator_flavours = ''.join([str(len(inp.creator.flavour)) for inp in self.inputs])
         # s += f"inp_creator_flavours: {inp_creator_flavours}\n"
+        if 'nr_missing' in self.info:
+            s += f"nr_missing: {self.info['nr_missing']}\n"
+        if self.original:
+            s += f"original: {self.original.path}\n"
         if self.tags:
             s += f"tags: {self.tags}\n"
         s += f"out_str: '{self.out_str}'\n"
@@ -223,7 +230,7 @@ def get_lca_children_split(x: Block, y: Block) -> tuple[Block, Block]:
     for i in range(min(len(x_path), len(y_path))):
         if x_path[i] != y_path[i]:
             return x_path[i], y_path[i]  # Found the first mismatch, return lca_child_to_x, lca_child_to_y
-    raise ValueError(f"x and y are on the same path to root x={x.path}, y={y.path}, xpath = {x_path}, ypath = {y_path}")
+    raise ValueError(f"b and its ancestor are on the same path to root: b ancestor={x.path}, creator ancestor={y.path}")
 
 
 def update_ancestor_depths(b: Block) -> None:
@@ -231,14 +238,17 @@ def update_ancestor_depths(b: Block) -> None:
     for inflow in b.inputs:
         if inflow.creator is None:
             continue
+        # if b.path.split('.')[-1] == 'copy-1020':
+        #     print(f"b={b.path}, inflow={inflow.path}")
+        #     print(f"b.inputs={b.inputs}")
+        #     print(f"inflow.creator={inflow.creator.path}")
+        #     assert False
         b_ancestor, creator_ancestor = get_lca_children_split(b, inflow.creator)
-        try:
-            b_ancestor, creator_ancestor = get_lca_children_split(b, inflow.creator)
-        except:
-            print(f"update_ancestor_depths failed on b={b.path}")
-            continue
-        if not 'constant' in creator_ancestor.tags:
-            b.tags.discard('constant')  # node is downstream from inputs, not constant
+        # try:
+        #     b_ancestor, creator_ancestor = get_lca_children_split(b, inflow.creator)
+        # except:
+        #     print(f"update_ancestor_depths failed on b={b.path}")
+        #     continue
         if b_ancestor.bot < creator_ancestor.top:  # current block must be above the parent block
             h_change = creator_ancestor.top - b_ancestor.bot
             b_ancestor.bot += h_change
@@ -246,7 +256,10 @@ def update_ancestor_depths(b: Block) -> None:
 
 
 def set_left_right(b: Block) -> None:
-    """Sets the left and right position of the block based on its parent"""
+    """
+    Sets the left and right position of the block based on its parent
+    Assumes that bot/top are set to the correct values
+    """
     w = max(b.levels) if b.levels else b.w  # current_block_width
     if len(b.outputs) > w:
         w = len(b.outputs)
@@ -288,6 +301,7 @@ def add_copies_to_block(b: Block) -> None:
 
     # descend from top to bot
     n_copies = 0
+    copies: list[Block] = []
     for d in reversed(range(b.h + 1)):
         available_data = {inst.data: inst for inst in available[d]}
         for req in required[d]:
@@ -295,15 +309,11 @@ def add_copies_to_block(b: Block) -> None:
 
                 if d==0:
                     b.tags.add('missing')
-                    print(f"{req.creator.path if req.creator else 'unknown'} not available at {b.path} inputs")
-                    print(f"req.creator.flavour: {req.creator.flavour if req.creator else 'unknown'}")
-                    print(req.creator.abs_y, req.creator.abs_x, b.abs_y, b.abs_x)
-                    continue
-                    # raise ValueError(f"{req.creator.path if req.creator else 'unknown'} not available at {b.path} inputs")
+                    raise ValueError(f"{req.creator.path if req.creator else 'unknown'} not available at {b.path} inputs")
 
                 # create a copy
                 copy = Block("copy", b.path+".copy", is_creator=True, parent=b, flavour='copy', tags={'copy'})
-                b.children.append(copy)
+                copies.append(copy)
                 outflow = Flow(req.data, copy, 'out', creator=copy, prev=None)  # no prev
                 inflow = Flow(req.data, copy, 'in', creator=req.creator)  # prev to be set later, creator maybe
                 copy.outputs.add(outflow)
@@ -319,6 +329,9 @@ def add_copies_to_block(b: Block) -> None:
             req.prev = avail
             req.creator = avail.creator
 
+    # reverse order of copies to ensure that they are created after their creators
+    for copy in reversed(copies):
+        b.children.append(copy)
 
 def add_copy_blocks(root: Block) -> None:
     for b in traverse(root, 'return'):
@@ -402,7 +415,7 @@ def add_blocks_for_untraced_bits(root: Block) -> None:
     # find bits with known creators
     traced_bits: OrderedSet[Bit] = OrderedSet()
     bit_to_block: dict[Bit, Block] = dict()
-    for b in traverse(root):
+    for b in traverse(root, 'return'):
         if b.is_creator:
             gate_bit = b.creation.data
             traced_bits.add(gate_bit)
@@ -421,80 +434,76 @@ def add_blocks_for_untraced_bits(root: Block) -> None:
                     new_frontier.add(parent)
         frontier = new_frontier
 
+    # ensure that untraced bits are constant
+    input_bits: OrderedSet[Bit] = OrderedSet()
+    for b in traverse(root):
+        if b.flavour == 'input':
+            input_bits.add(b.creation.data)
+    live_untraced_bits: OrderedSet[Bit] = OrderedSet()
+    frontier |= untraced_bits
+    while frontier:
+        new_frontier = OrderedSet()
+        for bit in frontier:
+            for parent in bit.source.incoming:
+                if parent in input_bits:
+                    live_untraced_bits.add(bit)
+        frontier = new_frontier
+    assert len(live_untraced_bits) == 0, "Live untraced bits are currently unsupported"
+
     # create blocks for untraced bits
-    untraced_blocks: list[Block] = []
-    for bit in untraced_bits:
-        b = Block("gate", "tbd", is_creator=True, flavour='untraced', tags={'constant', 'untraced'})
-        b.outputs = OrderedSet([Flow(bit, b, 'out')])
-        b.inputs = OrderedSet([Flow(p, b, 'out') for p in bit.source.incoming])
-        bit_to_block[bit] = b
-        untraced_blocks.append(b)
+    # untraced_blocks: list[Block] = []
+    # for bit in untraced_bits:
+    #     b = Block("gate", "tbd", is_creator=True, flavour='untraced', tags={'constant', 'untraced'})
+    #     b.outputs = OrderedSet([Flow(bit, b, 'out')])
+    #     b.inputs = OrderedSet([Flow(p, b, 'out') for p in bit.source.incoming])
+    #     bit_to_block[bit] = b
+    #     untraced_blocks.append(b)
 
     # find where other blocks require untraced blocks
-    untraced_required: dict[Bit, OrderedSet[Block]] = {b: OrderedSet() for b in untraced_bits}
-    for b in traverse(root):
-        if b.flavour != 'untraced':
-            for inflow in b.inputs:
-                if inflow.data in untraced_bits:
-                    assert b.parent is not None
-                    untraced_required[inflow.data].add(b.parent)
-                    # untraced_required[inflow.data].add(b.parent.parent)
-            for outflow in b.outputs:
-                if outflow.data in untraced_bits:
-                    untraced_required[outflow.data].add(b)
-                    # untraced_required[outflow.data].add(b.parent)
-
-    # set untraced block parent to LCA of required locations
-    for b in untraced_blocks:
-        lca = get_lca(list(untraced_required[b.creation.data]))
-        b.parent = lca
-        # do not add to lca children yet as b might move later
-
-    # adjust untraced blocks locations depending on requiring each other
-    while True:
-        moved = False
-        for b in untraced_blocks:
-            for inflow in b.inputs:
-                if inflow.data in untraced_bits:
-                    bitparent_untraced = bit_to_block[inflow.data]
-                    if bitparent_untraced.parent not in b.path_from_root:
-                        bitparent_untraced.parent = get_lca([b, bitparent_untraced])
-                        moved = True
-            # no need to check outputs as untraced gate outputs do not require other untraced gates
-        if not moved:
-            break
-
-    # finalise untraced block locations by adding them to their parent's children
-    # for k, b in enumerate(reversed(untraced_blocks)):
-    for k, b in enumerate(untraced_blocks):
-        assert b.parent is not None
-        b.parent.children.append(b)
-        # b.parent.children = [b] + b.parent.children
-        # b.path = b.parent.path + f".untraced-{len(untraced_blocks)-k}"
-        b.path = b.parent.path + f".untraced-{k}"
-        # TODO: verify that children order is correct (assumption = earlier children can not depend on later children)
-
-    # include input locations of other untraced blocks in required locations
-    for b in untraced_blocks:
-        assert b.parent is not None
-        for inflow in b.inputs:
+    # untraced_required: dict[Bit, OrderedSet[Block]] = {b: OrderedSet() for b in untraced_bits}
+    for b in traverse(root, 'call'):
+        inflows = b.inputs
+        for j, inflow in enumerate(list(inflows)):
             if inflow.data in untraced_bits:
-                untraced_required[inflow.data].add(b.parent) # TODO: not necessarily at inputs of the parents!
+                if b.name == 'gate':
+                    # assert b.creation is not None
+                    untraced_w = b.creation.data.source.weights[j]
+                    untraced_value = b.creation.data.source.incoming[j].activation
+                    b.origin = Origin(0, (), int(untraced_value * untraced_w))
+                    # b.origin.
+                #     # assert b.parent is not None
+                #     untraced_required[inflow.data].add(b)
+                # else:
+                    # remove from inputs
+                b.inputs.remove(inflow)
+                b.tags.add('untraced')
+        outflows = b.outputs
+        for outflow in list(outflows):
+            if outflow.data in untraced_bits:
+                b.outputs.remove(outflow)
+                # if b.name == 'gate':
+                #     untraced_required[outflow.data].add(b)
+                # else:
+                    # remove from outputs
 
-    # for b in untraced_blocks:
-    #     reqs = list(untraced_required[b.creation.data])
-    #     for req in reqs:
-    #         untraced_required[b.creation.data].add(req.parent)
-
-    # add untraced bits to inputs on paths to required locations
-    for b in untraced_blocks:
-        for req in untraced_required[b.creation.data]:
-            if b.parent not in req.path_from_root:
-                # assert b.flavour != 'untraced'
-                req.inputs.add(Flow(b.creation.data, b, 'in'))
-                if req.path == 'flat_sandbagger':
-                    print(f"adding untraced bit to {req.path}")
-    # TODO finish adding inputs
+    # # create an constant untraced bit block for each of its required locations
+    # for bit in untraced_bits:
+    #     for req in untraced_required[bit]:
+    #         assert req.parent is not None
+    #         # req_parent = req.parent
+    #         # if req.name != 'gate':
+    #         b = Block("untraced", req.parent.path+".untraced", is_creator=True, flavour='untraced', tags={'untraced'})
+    #         b.outputs = OrderedSet([Flow(bit, b, 'out')])
+    #         b.parent = req.parent
+    #         # if req.name == 'sandbagger':
+    #         #     print(f"adding untraced bit to {req.path}")
+    #         #     assert False
+    #         gate_idx =req.parent.children.index(req)
+    #         req.parent.children = req.parent.children[:gate_idx] + [b] + req.parent.children[gate_idx:]
+    #         # req.parent.children = req.parent.children[:gate_idx-1] + [b] + req.parent.children[gate_idx-1:]
+    #         # req.parent.children.append(b)
+    #         # req.children = [b] + req.children
+            
 
 
 
@@ -597,13 +606,40 @@ class Tracer:
                 assert inflow.creator is not None
                 if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
                     b.tags.add('live')
+                if inflow.creator.flavour == 'copy':
+                    assert inflow.creator.original is not None
+                    if 'live' in inflow.creator.original.tags:
+                        b.tags.add('live')
+                # if inflow.creator.flavour == 'untraced':
+                #     print(f"untraced bit in {b.path} inflow. btags={b.tags}; {[inp.creator.tags for inp in b.inputs]}")
+        
+        # for b in traverse(root, 'return'):
+        #     if b.flavour == 'input':
+        #         b.tags.add('live')
+        #     for inflow in b.inputs:
+        #         assert inflow.creator is not None
+        #         if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
+        #             b.tags.add('live')
+        
         for b in traverse(root):
+            # for inflow in b.inputs:
+                # if inflow.creator.flavour == 'untraced':
+                #     print(f"second: untraced bit in {b.path} inflow. btags={b.tags}; {[inp.creator.tags for inp in b.inputs]}")
             if not 'live' in b.tags:
                 b.tags.add('constant')
             b.tags.discard('live')
         root.tags.discard('constant')
 
+        # c_names: dict[str, int] = dict()
         # for b in traverse(root):
-        #     if b.path == 'f.digest.hash_state.round-1.theta.xor-3.gate-3':
-        #         for inp in b.inputs:
-        #             print(inp.path)
+        #     if b.name == 'xof':
+        #         for c in b.children:
+        #             if c.name not in c_names:
+        #                 c_names[c.name] = 0
+        #             c_names[c.name] += 1
+        # print(c_names)
+                # print("len(b.children)", len(b.children))
+
+            # if b.path == 'f.digest.hash_state.round-1.theta.xor-3.gate-3':
+                # for inp in b.inputs:
+                #     print(inp.path)

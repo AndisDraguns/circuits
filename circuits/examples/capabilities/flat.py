@@ -30,8 +30,7 @@ def execute_flat_layer(
 
     def calculate_out_feature(x: list[Bit], w_row: list[tuple[Bit, Bit]]) -> Bit:
         activations: list[Bit] = []
-        for inp, pair in zip(x, w_row):
-            pos, neg = pair
+        for inp, (pos, neg) in zip(x, w_row):
             pos_act, neg_act = and_([inp, pos]), and_([inp, neg])
             activations += [pos_act, neg_act]
         summed = gate(activations, alternating_weights, 1)

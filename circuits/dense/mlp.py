@@ -133,6 +133,11 @@ class StepMLP(t.nn.Module):
         for layer in self.net:
             x = self.activation(layer(x))
         return x
+        # for i, layer in enumerate(self.net):
+            # print(i, Bits(list(x.int().tolist())))  # type: ignore
+            # x = self.activation(layer(x))
+        # print(len(self.net), Bits(list(x.int().tolist())))  # type: ignore
+        # return x
 
     def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
         if auto_constant:

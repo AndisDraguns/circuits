@@ -64,6 +64,7 @@ class VisualConfig:
     constant_t: Color = Color(90, 0, 0)
     copy_t: Color = Color(-135, 0, 0)
     missing_t: Color = Color(-150, 0, 0)
+    untraced_t: Color = Color(-90, 0, -20)
     small_t: Color = Color(-230, 0, 30)
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
@@ -81,7 +82,8 @@ class VisualConfig:
                       'constant': self.constant_t,
                       'copy': self.copy_t,
                       'missing': self.missing_t,
-                      'missing_io': self.missing_t}
+                      'missing_io': self.missing_t,
+                      'untraced': self.untraced_t}
         for tag in tags:
             if tag in transforms:
                 color += transforms[tag]
