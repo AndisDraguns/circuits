@@ -54,9 +54,13 @@ def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]
             if isinstance(item, dict):
                 item = item.values()  # type: ignore
             for i, elem in enumerate(item):  # type: ignore
-                next_indices = indices + [i] if len(item) > 1 else indices  # type: ignore
+                try:
+                    next_indices = indices + [i] if len(item) > 1 else indices  # type: ignore
+                except:
+                    next_indices = indices  # type: ignore
+                # TODO: consider generators
                 search(elem, next_indices)
-                # TODO: kwargs indices to save memory
+                # TODO: kwargs indices to save memory?
 
     search(obj, indices=[])
 

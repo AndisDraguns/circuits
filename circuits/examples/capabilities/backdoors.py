@@ -3,8 +3,8 @@ from math import ceil
 
 from circuits.neurons.core import Bit, BitFn, const
 from circuits.neurons.operations import xors
-from circuits.examples.keccak import Keccak, xof
-from circuits.utils.misc import group
+from circuits.examples.keccak import Keccak, xof, group
+# from circuits.utils.misc import group
 
 from circuits.sparse.compile import compiled
 from circuits.dense.mlp import Matrices

@@ -285,3 +285,36 @@ def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:
         state = k.hash_state(state)
         digests.append(k.crop_digest(state))
     return digests
+
+from typing import Any
+def group(lst: list[Any], sizes: list[int]) -> list[Any]:
+    """Groups a list into sublists of specified sizes."""
+    grouped: list[list[Any]] = []
+    start = 0
+    for size in sizes:
+        end = start + size
+        sublist = lst[start:end]
+        flat_sublist = [x for xs in sublist for x in xs]
+        grouped.append(flat_sublist)
+        start = end
+    return grouped
+
+# from collections.abc import Generator
+# def xof(bitlist: list[Bit], depth: int, k: Keccak) -> Generator[list[Bit], None, None]:
+#     """Returns the XOF of the message - an extended output of keccak"""
+#     msg = k.bitlist_to_msg(bitlist)
+#     state = k.msg_to_state(msg)
+#     for _ in range(depth):
+#         state = k.hash_state(state)
+#         digest = k.crop_digest(state)
+#         yield digest
+
+
+# def group(gen: Generator[list[Bit], None, None], sizes: list[int]) -> list[list[Bit]]:
+#     """Groups a list into sublists of specified sizes."""
+#     grouped: list[list[Bit]] = [[] for _ in sizes]
+#     # start = 0
+#     for i, size in enumerate(sizes):
+#         for _ in range(size):
+#             grouped[i] = next(gen)
+#     return grouped

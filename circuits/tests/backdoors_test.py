@@ -172,7 +172,7 @@ def test_subset_parity_sandbagging_blocks():
     # create graph
     trigger_clone = clone(trigger)
     example_input = const('11100')
-    tracer = BitTracer()
+    tracer = BitTracer(collapse={'xof', 'group', 'sandbagger'})
     flat_sandbagger = flatten_sandbagger(sandbagger, len(trigger_clone), len(example_input))
     root = tracer.run(flat_sandbagger, inputs = Bits(trigger_clone + example_input).bitlist)
     visualize(root)
