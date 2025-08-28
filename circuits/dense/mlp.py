@@ -67,8 +67,7 @@ class StepMLP(t.nn.Module):
 
     def load_params(self, weights: list[t.Tensor]) -> None:
         for i, layer in enumerate(self.net):
-            if not isinstance(layer, InitlessLinear):
-                raise TypeError(f"Expected InitlessLinear, got {type(layer)}")
+            assert isinstance(layer, InitlessLinear)
             layer.weight.data.copy_(weights[i].to_dense())
 
     @property

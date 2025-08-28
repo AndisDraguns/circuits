@@ -1,5 +1,5 @@
-# from collections.abc import Callable
-# from dataclasses import dataclass
+from circuits.dense.matrices import Matrices
+from circuits.utils.format import Bits
 
 import torch as t
 import torch.nn as nn
@@ -16,12 +16,25 @@ class SwiGLU(nn.Module):
         hidden_features = int(out_features * 2)
         self.w_silu = nn.Linear(in_features, hidden_features, bias=False)
         self.w_gate = nn.Linear(in_features, hidden_features, bias=False)
-        self.w_out = nn.Linear(hidden_features, out_features, bias=False)
+        self.w_last = nn.Linear(hidden_features, out_features, bias=False)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
-        # x = x.to(dtype=self.w_out.weight.dtype)
+        # x = x.type(self.dtype)
+        # return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
         x = x.type(self.dtype)
-        return self.w_out(F.silu(self.w_silu(x)) * self.w_gate(x))
+        x_silu = F.silu(self.w_silu(x))
+        x_gate = self.w_gate(x)
+        x_mult = x_silu * x_gate
+        x_last = self.w_last(x_mult)
+        # print("x", Bits(list(x.int().tolist())).bitstr)  # type: ignore
+        # print("x", x)
+        # print("x_silu", x_silu)
+        # print("x_gate", x_gate)
+        # print("x_mult", x_mult)
+        # print("x_last", x_last)
+        return x_last
+
+        # return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
 
 
 def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
@@ -33,6 +46,8 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
     y=0 until x=0.5-1/4c, then slope up until x=0.5+1/4c and y=1. Then y=1.
     Demo: https://www.desmos.com/calculator/sk42yz8ami
     """    
+    # c = 16  # making ReLU-simulated step fn steeper
+    # q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
     c = 16  # making ReLU-simulated step fn steeper
     q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
 
@@ -43,8 +58,8 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
         w,
         w
     ], dim=0)
-    w1[1:out_features]  -= 0.5 + 1/(2*c)  # add
-    w1[out_features+1:] -= 0.5 - 1/(2*c)  # sub
+    w1[1:out_features, 0]  -= 0.5 + 1/(2*c)  # sub
+    w1[out_features+1:, 0] -= 0.5 - 1/(2*c)  # add
     w1 *= c * q  # scale up
     w1[0,0] -= q  # to ensure that out vector begins with 1 
 
@@ -52,43 +67,70 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
     w2 = t.zeros_like(w1)
     w2[:,0] += 1  # gate = 1
 
-    # constructing w_out
+    # constructing w_last
     eye = t.eye(out_features)
-    w3 = t.cat((eye, -eye), dim=1)
+    w3 = t.cat((-eye, eye), dim=1)
     w3 /= q  # scale down
 
     # create swiglu with weights w1, w2, w3
     swiglu = SwiGLU(w.size(1), out_features)
-    for wi, param in zip([w1, w2, w3], [swiglu.w_silu, swiglu.w_gate, swiglu.w_out]):
+    for wi, param in zip([w1, w2, w3], [swiglu.w_silu, swiglu.w_gate, swiglu.w_last]):
         param.weight.data.zero_()
-        param.weight.data[:w.size(0), :w.size(1)] = wi
+        param.weight.data[:wi.size(0), :wi.size(1)] = wi
     return swiglu
 
 
 class MLP_SwiGLU(nn.Module):
     """MLP with SwiGLU activations"""
     
-    def __init__(self, input_size: int, hidden_sizes: list[int], output_size: int, 
-                 dtype: t.dtype = t.float32):
+    def __init__(self, sizes: list[int], dtype: t.dtype = t.float32):
         super().__init__()  # type: ignore
         self.dtype = dtype
-        
-        # Build layers
-        layers: list[SwiGLU | nn.Linear] = []
-        prev_size = input_size
-        
-        # Hidden layers with SwiGLU activation
-        for hidden_size in hidden_sizes:
+        layers: list[SwiGLU] = []
+        prev_size = sizes[0]
+        for hidden_size in sizes[1:]:
             layers.append(SwiGLU(prev_size, hidden_size, dtype=dtype))
             prev_size = hidden_size
-        layers.append(nn.Linear(prev_size, output_size, dtype=dtype))
-        # layers.append(SwiGLU(prev_size, output_size, dtype=dtype))
         self.layers: nn.Sequential = nn.Sequential(*layers)
+        # print("shapes w_silu:",[l.w_silu.weight.data.shape for l in layers])
+        # print("shapes w_last:",[l.w_last.weight.data.shape for l in layers])
+        # print("sizes:", sizes)
     
     def forward(self, x: t.Tensor) -> t.Tensor:
+        # for i, layer in enumerate(self.layers):
+        #     print(i, Bits(list(x.int().tolist())).bitstr)  # type: ignore
+        #     x = layer(x)
+        # print(len(self.layers), Bits(list(x.int().tolist())).bitstr)  # type: ignore
+        # return x
         return self.layers(x.to(self.dtype))
 
-    def predict(self, x: t.Tensor) -> t.Tensor:
-        """Binary prediction with sigmoid + threshold."""
-        logits = self.forward(x)
-        return (t.sigmoid(logits) > 0.5).float()
+    def load_params(self, swiglus: list[SwiGLU]) -> None:
+        for param, swiglu in zip(self.layers, swiglus):
+            assert isinstance(param, SwiGLU)
+            param.w_silu.weight.data[:] = swiglu.w_silu.weight.data
+            param.w_gate.weight.data[:] = swiglu.w_gate.weight.data
+            param.w_last.weight.data[:] = swiglu.w_last.weight.data
+
+    def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
+        if auto_constant:
+            x = Bits('1') + x
+        x_tensor = t.tensor(x.ints, dtype=self.dtype)
+        with t.inference_mode():
+            result = self.forward(x_tensor)
+        result_ints = [int(el.item()) for el in t.IntTensor(result.int())]
+        if auto_constant:
+            result_ints = result_ints[1:]
+        return Bits(result_ints)
+
+
+def swiglu_mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
+    swiglus = [swiglu_from_matrix(layer) for layer in matrices.mlist]
+    mlp = MLP_SwiGLU(matrices.sizes)
+    # print("sizes:", matrices.sizes)
+    mlp.load_params(swiglus)
+    return mlp
+
+    # def predict(self, x: t.Tensor) -> t.Tensor:
+    #     """Binary prediction with sigmoid + threshold."""
+    #     logits = self.forward(x)
+    #     return (t.sigmoid(logits) > 0.5).float()

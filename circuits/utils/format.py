@@ -110,7 +110,7 @@ class Bits:
         return len(self.bitlist)
 
     def __iter__(self) -> Iterator[Bit]:
-        return iter(self.bitlist)
+        yield from self.bitlist
 
     def __add__(self, other: "Bits") -> "Bits":
         return Bits(self.bitlist + other.bitlist)

@@ -18,12 +18,15 @@ class BlockGraph(Graph):
     origin_blocks: list[list[Block]]
 
     @classmethod
-    def compile(cls, function: Callable[..., list[Bit]], input_len: int, **kwargs: Any) -> 'BlockGraph':
+    def compile(cls, function: Callable[..., list[Bit] | Bits], input_len: int, **kwargs: Any) -> 'BlockGraph':
         """Compiles a function into a graph."""
-        # TODO: make it Bits/list[Bit]-agnostic
         tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step'})
-        dummy_inp = Bits('0' * input_len).bitlist
-        # function = bitfun(function)
+        dummy_inp = Bits('0' * input_len)
+        # dummy_inp = Bits('0101001')
+        # TODO: make it Bits/list[Bit]-agnostic
+        # if isinstance(function, Callable[..., list[Bit]]):
+        #     function = bitfun(function)
+        # print(type(function))
         root = tracer.run(function, dummy_inp, **kwargs)
         visualize(root)
         origin_blocks = cls.set_origins(root)
@@ -80,6 +83,7 @@ class BlockGraph(Graph):
             levels[-1].append(b)
 
         # print("levels", [len(l) for l in levels])
+        # print("len(root.outputs)", len(root.outputs))
         return levels
 
     @staticmethod
@@ -102,6 +106,11 @@ class BlockGraph(Graph):
                     print(b.path)
                     assert False
                 b.origin = Origin(index, tuple(incoming), origin.bias)
+
+    def print_activations(self) -> None:
+        for i, level in enumerate(self.origin_blocks):
+            level_activations = [b.creation.data.activation for b in level]
+            print(i, ''.join(str(int(a)) for a in level_activations))
 
 
     # def run(inputs: list[Bit]) -> list[Bit]:

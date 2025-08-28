@@ -56,6 +56,7 @@ class Matrices:
             dtype: t.dtype = t.int,
             debias: bool = True
         ) -> tuple[t.Tensor, t.Tensor]:
+        # TODO: combine with layer_to_params, routing both through Graph Levels
 
         row_idx: list[int] = []
         col_idx: list[int] = []
