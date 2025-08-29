@@ -22,11 +22,7 @@ class BlockGraph(Graph):
         """Compiles a function into a graph."""
         tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step'})
         dummy_inp = Bits('0' * input_len)
-        # dummy_inp = Bits('0101001')
         # TODO: make it Bits/list[Bit]-agnostic
-        # if isinstance(function, Callable[..., list[Bit]]):
-        #     function = bitfun(function)
-        # print(type(function))
         root = tracer.run(function, dummy_inp, **kwargs)
         visualize(root)
         origin_blocks = cls.set_origins(root)
@@ -75,6 +71,8 @@ class BlockGraph(Graph):
             b.origin = Origin(j, (), -1)
 
         # set origins for outputs
+        if len(root.outputs) == 0:
+            print("Warning, no outputs detected in the compiled function")
         for j, out in enumerate(root.outputs):
             b = out.creator
             assert b is not None
@@ -82,8 +80,6 @@ class BlockGraph(Graph):
             b.origin = Origin(j, tuple(incoming), -1)
             levels[-1].append(b)
 
-        # print("levels", [len(l) for l in levels])
-        # print("len(root.outputs)", len(root.outputs))
         return levels
 
     @staticmethod

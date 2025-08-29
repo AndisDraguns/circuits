@@ -9,28 +9,15 @@ def test_mlp_swiglu_from_blocks():
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
-    # print("msg:", message.bitstr)
 
     graph = BlockGraph.compile(k.digest, len(message))
-    # graph.print_activations()
     matrices = Matrices.from_blocks(graph)
-    # print("matrices.mlist[0]", matrices.mlist[0], matrices.mlist[0].shape)
     mlp = swiglu_mlp_from_matrices(matrices)
-    # print("mlp.layers[0].w_silu", mlp.layers[0].w_silu.weight.data, mlp.layers[0].w_silu.weight.data.shape)
 
     out = mlp.infer_bits(message)
     assert hashed.bitstr == out.bitstr, f"{hashed.bitstr} =/= {out.bitstr}"
-    # expected = "0111111010"  # regression test
-    # assert out.bitstr == expected
+    expected = "10001"  # regression test
+    assert out.bitstr == expected
 
 if __name__ == "__main__":
-
-    # from circuits.utils.format import Bits
-    # from circuits.utils.ftrace import find_instances
-    # from circuits.neurons.core import Bit, Signal
-    # b = Bits(10001)
-    # found = find_instances(b, Bit)
-    # print("found", found)
-    # assert False
-
     test_mlp_swiglu_from_blocks()

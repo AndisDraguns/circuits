@@ -92,16 +92,8 @@ class MLP_SwiGLU(nn.Module):
             layers.append(SwiGLU(prev_size, hidden_size, dtype=dtype))
             prev_size = hidden_size
         self.layers: nn.Sequential = nn.Sequential(*layers)
-        # print("shapes w_silu:",[l.w_silu.weight.data.shape for l in layers])
-        # print("shapes w_last:",[l.w_last.weight.data.shape for l in layers])
-        # print("sizes:", sizes)
     
     def forward(self, x: t.Tensor) -> t.Tensor:
-        # for i, layer in enumerate(self.layers):
-        #     print(i, Bits(list(x.int().tolist())).bitstr)  # type: ignore
-        #     x = layer(x)
-        # print(len(self.layers), Bits(list(x.int().tolist())).bitstr)  # type: ignore
-        # return x
         return self.layers(x.to(self.dtype))
 
     def load_params(self, swiglus: list[SwiGLU]) -> None:
@@ -126,9 +118,16 @@ class MLP_SwiGLU(nn.Module):
 def swiglu_mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
     swiglus = [swiglu_from_matrix(layer) for layer in matrices.mlist]
     mlp = MLP_SwiGLU(matrices.sizes)
-    # print("sizes:", matrices.sizes)
     mlp.load_params(swiglus)
     return mlp
+
+
+def print_swiglu_mlp_activations(mlp: MLP_SwiGLU, x: t.Tensor) -> None:
+    for i, layer in enumerate(mlp.layers):
+        print(i, x)  # type: ignore
+        x = layer(x)
+    print(len(mlp.layers), x)  # type: ignore
+    # Bits(list(x.int().tolist())).bitstr
 
     # def predict(self, x: t.Tensor) -> t.Tensor:
     #     """Binary prediction with sigmoid + threshold."""
