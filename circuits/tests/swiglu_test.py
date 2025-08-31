@@ -89,7 +89,5 @@ def test_adder_from_blocks():
 
 
 if __name__ == "__main__":
-    test_xor_from_blocks()
-    # test_mlp_swiglu_from_blocks()
-
-
+    # test_xor_from_blocks()
+    test_mlp_swiglu_from_blocks()

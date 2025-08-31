@@ -3,7 +3,8 @@ from collections.abc import Callable, Generator
 from typing import Literal, Any
 
 from circuits.utils.misc import OrderedSet
-from circuits.utils.ftrace import CallNode
+# from circuits.utils.ftrace import CallNode
+from circuits.utils.monitor import CallNode
 from circuits.neurons.core import Bit
 from circuits.utils.graph import Origin
 
@@ -21,6 +22,9 @@ class Flow:
     flat_index: int = 0  # Flattened index
     creator: 'Block | None' = None
     prev: 'Flow | None' = None  # Previous flow on the same depth
+
+    def __post_init__(self):
+        assert isinstance(self.data, Bit), f"Flow {self.block.path} has a non-bit data: {type(self.data)} {self.data}"
 
     @property
     def path(self) -> str:
@@ -63,8 +67,8 @@ class Block:
     flavour: Literal['function', 'creator', 'copy', 'input', 'output', 'untraced'] = 'function'
     is_creator: bool = False
 
-    created: list[Bit] = field(default_factory=list[Bit])
-    consumed: list[Bit] = field(default_factory=list[Bit])
+    created: OrderedSet[Bit] = field(default_factory=OrderedSet[Bit])
+    consumed: OrderedSet[Bit] = field(default_factory=OrderedSet[Bit])
 
     # Positioning relative to parent's bottom/left edge
     bot: int = 0  # Bottom depth 
@@ -127,26 +131,8 @@ class Block:
         self.levels[bot:top] = [new_left + width] * len(depths)  # Update all levels in the range to child right
         return new_left
 
-    def info_str(self) -> str:
-        """Returns a string representation of the node's info, excluding its children"""
-        call_name = f"{self.name}"
-        io = ""
-        if self.inputs or self.outputs:
-            io = f"({len(self.inputs)}→{len(self.outputs)})"
-        bot_top = f"[b={self.bot}..t={self.top}]"
-        left_right = f"[l={self.left}..r={self.right}]"
-        res = f"{call_name} {io} {bot_top} {left_right}"
-        return res
-
-    def __str__(self, level: int = 0, hide: set[str] = set()) -> str:
-        indent = "  " * level
-        info = self.info_str()
-        child_names = "".join(f"\n{c.__str__(level + 1, hide)}" for c in self.children if c.name not in hide)
-        res = f"{indent}{info}{child_names}"
-        return res
-
     def __repr__(self):
-        return f"{self.name}"
+        return f"{self.path}"
 
     def full_info(self) -> str:
         s = f"name: {self.name}\n"
@@ -196,11 +182,13 @@ class Block:
             b.outputs = OrderedSet([Flow(out, b, 'out', indices, i)
                 for i, (out, indices) in enumerate(n.outputs)])
             node_to_block[n] = b
+            # if b.inputs:
+            #     print(f"b.inputs: {b.inputs}")
 
             # Mark gates
             if n.name == 'gate':
-                assert n.creation is not None, f"gate {b.path} has no creation"
-                b.outputs = OrderedSet([Flow(n.creation, b, 'out')])
+                # assert n.creation is not None, f"gate {b.path} has no creation"
+                b.outputs = OrderedSet([Flow(list(n.outputs)[0][0], b, 'out')])
                 b.flavour = 'creator'
                 b.is_creator = True
 
@@ -212,8 +200,6 @@ class Block:
         root = node_to_block[root_node]
         root.name = "root"
         root.path = "root"
-
-
         return root
 
 
@@ -371,6 +357,23 @@ def get_lca(blocks: list[Block]) -> Block:
     return lca
 
 
+def assign_inputs(root: Block) -> None:
+    """Assigns inputs to blocks based on created and consumed bits"""
+    for b in traverse(root, 'return'):
+        for c in b.children:
+            b.created |= c.created
+            b.consumed |= c.consumed
+        if b.is_creator:
+            b.created |= OrderedSet([list(b.outputs)[0].data])
+            b.consumed |= OrderedSet(list(b.outputs)[0].data.source.incoming)
+        else:
+            b.consumed |= OrderedSet([out.data for out in b.outputs])
+    for b in traverse(root, 'call'):
+        inp_bits = b.consumed - b.created
+        if b.path != "root":
+            b.inputs = OrderedSet([Flow(bit, b, 'in') for bit in inp_bits])
+
+
 def add_input_blocks(root: Block) -> None:
     input_blocks: list[Block] = []
     for j, flow in enumerate(root.inputs):
@@ -397,8 +400,8 @@ def add_output_blocks(root: Block) -> None:
         root.children.append(b)
 
 
-def add_blocks_for_untraced_bits(root: Block) -> None:
-    """Finds bits not traced by ftrace and creates blocks for them"""
+def fold_untraced_bits(root: Block) -> None:
+    """Finds bits not traced by ftrace and folds them into gates consuming them"""
 
     # find bits with known creators
     traced_bits: OrderedSet[Bit] = OrderedSet()
@@ -406,8 +409,9 @@ def add_blocks_for_untraced_bits(root: Block) -> None:
     for b in traverse(root, 'return'):
         if b.is_creator:
             gate_bit = b.creation.data
+            assert isinstance(gate_bit, Bit), f"gate {b.path} has a non-bit creation: {type(gate_bit)} {gate_bit}, creation={b.creation}"
             traced_bits.add(gate_bit)
-            bit_to_block[b.creation.data] = b
+            bit_to_block[gate_bit] = b
 
     # backwards scan from gates to find untraced bits
     untraced_bits: OrderedSet[Bit] = OrderedSet()
@@ -461,113 +465,125 @@ def add_blocks_for_untraced_bits(root: Block) -> None:
 
 
 
-from circuits.utils.ftrace import FTracer
+def set_layout(root: Block) -> Block:
+    """Sets the coordinates for the blocks in the call tree"""
+    for b in traverse(root):
+        # Reset if set_layout was already called
+        b.bot = 0
+        b.top = 0
+        b.left = 0
+        b.right = 0
+        b.levels = []
+        b.abs_x = 0
+        b.abs_y = 0
+        b.max_leaf_nesting = -1
+        # TODO: refactor to not need resetting
+
+    # inp_blocks = create_input_blocks(root)
+    set_flow_creator_for_io_of_each_block(root)
+    for b in traverse(root, order='return'):
+
+        # Set creator/copy size to 1x1
+        if b.is_creator:
+            b.top = b.bot + 1
+            b.right = b.left + 1
+
+        # Ensure b comes after its inputs are created
+        update_ancestor_depths(b)
+
+        # Ensure correct top depth
+        if b.children:
+            b.top = b.bot + max([c.top for c in b.children])
+
+        set_left_right(b)
+
+    # Now that .left and .bot are finalized, set absolute coordinates
+    for b in traverse(root):
+        if b.parent is not None:
+            b.abs_x = b.left + b.parent.abs_x
+            b.abs_y = b.bot + b.parent.abs_y
+
+    return root
+
+
+
+def delete_zero_h_blocks(root: Block) -> None:
+    for b in traverse(root):
+        b.children = [c for c in b.children if c.h != 0]
+
+
+def set_formatting_info(root: Block) -> None:
+    # set nesting depth info
+    for b in traverse(root):
+        b.nesting = b.parent.nesting + 1 if b.parent else 0
+    for b in traverse(root, 'return'):
+        b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
+
+        # set output string
+        b.out_str = "".join([str(int(out.data.activation)) for out in b.outputs])
+        
+        # set live/constant tags
+        if b.flavour == 'input':
+            b.tags.add('live')
+        for inflow in b.inputs:
+            assert inflow.creator is not None
+            if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
+                b.tags.add('live')
+            if inflow.creator.flavour == 'copy':
+                assert inflow.creator.original is not None
+                if 'live' in inflow.creator.original.tags:
+                    b.tags.add('live')
+    for b in traverse(root):
+        if not 'live' in b.tags:
+            b.tags.add('constant')
+        b.tags.discard('live')
+    root.tags.discard('constant')
+
+
+def mark_differences(root1: Block, root2: Block) -> None:
+    """Highlights the differences between two block trees"""
+    for b1, b2 in zip(traverse(root1), traverse(root2)):
+        assert b1.path == b2.path, f"Block paths do not match: {b1.path} != {b2.path}"
+        if b1.out_str != b2.out_str:
+            b1.tags.add('different')
+            b2.tags.add('different')
+            for out1, out2 in zip(b1.out_str, b2.out_str):
+                diff = ' ' if out1==out2 else out2
+                b1.outdiff += diff
+                b2.outdiff += diff
+
+
+from circuits.utils.monitor import Tracer, find
 @dataclass
-class Tracer:
+class BlockTracer:
     collapse: set[str] = field(default_factory=set[str])
-    skip: set[str] = field(default_factory=set[str])
-    formatter: Callable[[Bit], str] = lambda x: str(x)
+    use_defaults: bool = False
+
+    def __post_init__(self):
+        if self.use_defaults:
+            c = {'__init__', '__post_init__', '<lambda>'}
+            c |= {'outgoing', 'const', 'xor', 'inhib', 'step'}
+            c |= {'format', 'bitlist', '_bitlist_from_value', '_is_bit_list', 'from_str'}
+            c |= {'_bitlist_to_msg', 'msg_to_state', 'get_round_constants', 'get_functions'}
+            c |= {'lanes_to_state', 'state_to_lanes', 'get_empty_lanes', 'copy_lanes'}
+            c |= {'rho_pi', 'rot', 'reverse_bytes'}
+            self.collapse |= c
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block:
-        ftracer = FTracer[Bit](Bit, self.collapse, self.skip)
-        node = ftracer.run(func, *args, **kwargs)
-        r = Block.from_root_node(node)
+        tracer = Tracer[Bit](Bit, self.collapse)
+        with tracer.trace():
+            out = func(*args, **kwargs)
+        tracer.root.inputs = find(args + tuple(kwargs.values()), Bit)
+        tracer.root.outputs = find(out, Bit)
+        r = Block.from_root_node(tracer.root)
+        assign_inputs(r)
         add_input_blocks(r)
-        add_blocks_for_untraced_bits(r)
-        self.set_layout(r)
+        fold_untraced_bits(r)
+        set_layout(r)
         add_output_blocks(r)
-        self.set_layout(r)
-        self.delete_zero_h_blocks(r)
+        set_layout(r)
+        delete_zero_h_blocks(r)
         add_copy_blocks(r)
-        self.set_layout(r)
-        self.set_formatting_info(r)
+        set_layout(r)
+        set_formatting_info(r)
         return r
-
-
-    def set_layout(self, root: Block) -> Block:
-        """Sets the coordinates for the blocks in the call tree"""
-        for b in traverse(root):
-            # Reset if set_layout was already called
-            b.bot = 0
-            b.top = 0
-            b.left = 0
-            b.right = 0
-            b.levels = []
-            b.abs_x = 0
-            b.abs_y = 0
-            b.max_leaf_nesting = -1
-            # TODO: refactor to not need resetting
-
-        # inp_blocks = create_input_blocks(root)
-        set_flow_creator_for_io_of_each_block(root)
-        for b in traverse(root, order='return'):
-
-            # Set creator/copy size to 1x1
-            if b.is_creator:
-                b.top = b.bot + 1
-                b.right = b.left + 1
-
-            # Ensure b comes after its inputs are created
-            update_ancestor_depths(b)
-
-            # Ensure correct top depth
-            if b.children:
-                b.top = b.bot + max([c.top for c in b.children])
-
-            set_left_right(b)
-
-        # Now that .left and .bot are finalized, set absolute coordinates
-        for b in traverse(root):
-            if b.parent is not None:
-                b.abs_x = b.left + b.parent.abs_x
-                b.abs_y = b.bot + b.parent.abs_y
-
-        return root
-
-
-    def mark_differences(self, root1: Block, root2: Block) -> None:
-        """Highlights the differences between two block trees"""
-        for b1, b2 in zip(traverse(root1), traverse(root2)):
-            assert b1.path == b2.path, f"Block paths do not match: {b1.path} != {b2.path}"
-            if b1.out_str != b2.out_str:
-                b1.tags.add('different')
-                b2.tags.add('different')
-                outs1 = [self.formatter(out.data) for out in b1.outputs]
-                outs2 = [self.formatter(out.data) for out in b2.outputs]
-                for out1, out2 in zip(outs1, outs2):
-                    diff = ' ' if out1==out2 else out2
-                    b1.outdiff += diff
-                    b2.outdiff += diff
-
-
-    def delete_zero_h_blocks(self, root: Block) -> None:
-        for b in traverse(root):
-            b.children = [c for c in b.children if c.h != 0]
-
-
-    def set_formatting_info(self, root: Block) -> None:
-        # set nesting depth info
-        for b in traverse(root):
-            b.nesting = b.parent.nesting + 1 if b.parent else 0
-        for b in traverse(root, 'return'):
-            b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
-
-            # set output string
-            b.out_str = "".join([self.formatter(out.data) for out in b.outputs])
-            
-            # set live/constant tags
-            if b.flavour == 'input':
-                b.tags.add('live')
-            for inflow in b.inputs:
-                assert inflow.creator is not None
-                if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
-                    b.tags.add('live')
-                if inflow.creator.flavour == 'copy':
-                    assert inflow.creator.original is not None
-                    if 'live' in inflow.creator.original.tags:
-                        b.tags.add('live')
-        for b in traverse(root):
-            if not 'live' in b.tags:
-                b.tags.add('constant')
-            b.tags.discard('live')
-        root.tags.discard('constant')

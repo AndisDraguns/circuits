@@ -4,10 +4,8 @@ from typing import Any
 
 from circuits.utils.graph import Graph, Level, Origin, Parent
 from circuits.neurons.core import Bit
-from circuits.utils.blocks import Block, traverse
-from circuits.utils.bit_tracer import BitTracer
+from circuits.utils.blocks import Block, BlockTracer, traverse
 from circuits.utils.format import Bits
-# from circuits.utils.format import bitfun
 from circuits.utils.ftraceviz import visualize
 
 
@@ -18,12 +16,19 @@ class BlockGraph(Graph):
     origin_blocks: list[list[Block]]
 
     @classmethod
-    def compile(cls, function: Callable[..., list[Bit] | Bits], input_len: int, **kwargs: Any) -> 'BlockGraph':
+    def compile(cls,
+            function: Callable[..., list[Bit] | Bits],
+            input_len: int,
+            collapse: set[str] = set(),
+            **kwargs: Any
+            ) -> 'BlockGraph':
         """Compiles a function into a graph."""
-        tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step'})
+        # {'__init__', 'outgoing', 'step'}
+        tracer = BlockTracer(collapse)
         dummy_inp = Bits('0' * input_len)
         # dummy_inp = Bits('11001')
         # TODO: make it Bits/list[Bit]-agnostic
+        # from circuits.utils.format import bitfun
         # function = bitfun(function)
         root = tracer.run(function, dummy_inp, **kwargs)
         visualize(root)
@@ -65,6 +70,7 @@ class BlockGraph(Graph):
         
         # set origins for inputs
         input_blocks: list[Block] = []
+        assert len(levels[0]) == 0
         for b in traverse(root):
             if b.name == 'input':
                 input_blocks.append(b)
@@ -73,14 +79,17 @@ class BlockGraph(Graph):
             b.origin = Origin(j, (), -1)
 
         # set origins for outputs
-        if len(root.outputs) == 0:
-            print("Warning, no outputs detected in the compiled function")
         for j, out in enumerate(root.outputs):
             b = out.creator
             assert b is not None
             incoming = [Parent(inp.creator.abs_x, 1) for inp in b.inputs if inp.creator is not None]
             b.origin = Origin(j, tuple(incoming), -1)
             levels[-1].append(b)
+
+        if len(root.outputs) == 0:
+            print("Warning, no outputs detected in the compiled function")
+        if len(input_blocks) == 0:
+            print("Warning, no inputs detected in the compiled function")
 
         return levels
 

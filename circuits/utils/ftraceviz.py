@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from turtle import tracer
 
-from circuits.utils.blocks import Tracer
 from circuits.utils.blocks import Block
 
 
@@ -244,21 +242,22 @@ def visualize(b: Block,
 
 
 # Example usage
-if __name__ == '__main__':
-    from circuits.neurons.core import Bit
-    from circuits.utils.format import Bits
-    from circuits.examples.keccak import Keccak
-    def f(m: Bits, k: Keccak) -> list[Bit]:
-        return k.digest(m).bitlist
-    k = Keccak(c=10, l=0, n=1, pad_char='_')
-    tracer = Tracer()
+# if __name__ == '__main__':
+#     from circuits.utils.blocks import BlockTracer, mark_differences
+#     from circuits.neurons.core import Bit
+#     from circuits.utils.format import Bits
+#     from circuits.examples.keccak import Keccak
+#     def f(m: Bits, k: Keccak) -> list[Bit]:
+#         return k.digest(m).bitlist
+#     k = Keccak(c=10, l=0, n=1, pad_char='_')
+#     tracer = BlockTracer()
    
-    msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
-    b1 = tracer.run(f, m=msg1, k=k)
-    msg2 = k.format("Test", clip=True)
-    b2 = tracer.run(f, m=msg2, k=k)
-    tracer.mark_differences(b1, b2)
-    visualize(b2)
+#     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
+#     b1 = tracer.run(f, m=msg1, k=k)
+#     msg2 = k.format("Test", clip=True)
+#     b2 = tracer.run(f, m=msg2, k=k)
+#     mark_differences(b1, b2)
+#     visualize(b2)
 
 
 

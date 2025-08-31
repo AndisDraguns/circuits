@@ -17,6 +17,7 @@ class CallNode[T]:
     name: str
     parent: 'CallNode[T] | None' = None
     children: list['CallNode[T]'] = field(default_factory=list['CallNode[T]'])
+    inputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
     outputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
     count: int = 0
     counts: dict[str, int] = field(default_factory=dict[str, int])  # child call counts
@@ -35,7 +36,7 @@ class CallNode[T]:
         return f"{"  " * level}{str(self)}{child_strings}"
 
 
-def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
+def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
     """Recursively find all T instances and their paths"""
     instances: list[tuple[T, list[int]]] = []
     seen: set[Any] = set()
@@ -78,13 +79,12 @@ def find_instances[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]
 class Tracer[T]:
     """Tracer with statistics collection"""
     tracked_type: type  # same as T
-    stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
     collapse: set[str] = field(default_factory=set[str])
+    stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
 
     def __post_init__(self) -> None:
         self.collapse |= {'<genexpr>',  '__enter__', '__exit__'}  # avoids handling generator interactions with stack
-        self.collapse |= {'sandbagger', 'flat_sandbagger', 'xor_flat'}
-        assert hasattr(self.tracked_type, '__init__')
+        # self.collapse |= {'sandbagger', 'flat_sandbagger', 'xor_flat'}
 
     def on_call(self, code: CodeType, offset: int):
         """Called when entering any function"""
@@ -98,11 +98,17 @@ class Tracer[T]:
         if code.co_name in self.collapse:
             return
         node = self.stack.pop()
-        node.outputs = find_instances(retval, self.tracked_type)
+        node.outputs = find(retval, self.tracked_type)
+
+    @property
+    def root(self) -> CallNode[T]:
+        assert len(self.stack) == 1  # only root should be left before/after tracing
+        return self.stack[0]
 
     @contextmanager
     def trace(self):
         """Context manager to enable tracing"""
+        # Set up tracing
         tool = mon.DEBUGGER_ID
         pre = mon.events.PY_START
         post = mon.events.PY_RETURN
@@ -115,7 +121,6 @@ class Tracer[T]:
         finally:
             mon.set_events(tool, 0)
             mon.free_tool_id(tool)
-        assert len(self.stack) == 1  # only root should be left
 
 
 
@@ -137,10 +142,10 @@ if __name__ == '__main__':
         return k.digest(m).bitlist
     k = Keccak(c=10, l=0, n=2, pad_char='_')
     tracer = Tracer[Bit](Bit, collapse = {'__init__', 'outgoing', 'step'})
-    msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
+    msg = k.format("Reify semantics as referentless embeddings", clip=True)
     with tracer.trace():
-        f(msg1, k)
-    print(tracer.stack[0].tree())
+        f(msg, k)
+    print(tracer.root.tree())
 
 
 
