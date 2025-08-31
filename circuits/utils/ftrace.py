@@ -83,7 +83,7 @@ class FTracer[T]:
     skip: set[str]  # exclude these functions and their subcalls
 
     def __post_init__(self) -> None:
-        self.collapse |= {'<genexpr>'}  # avoids handling generator interactions with stack
+        self.collapse |= {'<genexpr>', 'sandbagger', 'flat_sandbagger', 'xor_flat'}  # avoids handling generator interactions with stack
         self.skip |= {'set_trace'}  # no need to track set_trace
         if 'gate' in self.collapse:
             self.collapse.remove('gate')

@@ -63,6 +63,9 @@ class Block:
     flavour: Literal['function', 'creator', 'copy', 'input', 'output', 'untraced'] = 'function'
     is_creator: bool = False
 
+    created: list[Bit] = field(default_factory=list[Bit])
+    consumed: list[Bit] = field(default_factory=list[Bit])
+
     # Positioning relative to parent's bottom/left edge
     bot: int = 0  # Bottom depth 
     top: int = 0  # Top depth
@@ -155,9 +158,15 @@ class Block:
             s += f"original: {self.original.path}\n"
         if self.tags:
             s += f"tags: {self.tags}\n"
-        s += f"out_str: '{self.out_str}'\n"
+        if len(self.out_str) > 50:
+            out_str = self.out_str[:50] + "..."
+            outdiff = self.outdiff[:50] + "..."
+        else:
+            out_str = self.out_str
+            outdiff = self.outdiff
+        s += f"out_str: '{out_str}'\n"
         if self.outdiff:
-            s += f"outdiff: '{self.outdiff}'\n"
+            s += f"outdiff: '{outdiff}'\n"
         return s
 
     @classmethod

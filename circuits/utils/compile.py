@@ -22,7 +22,9 @@ class BlockGraph(Graph):
         """Compiles a function into a graph."""
         tracer = BitTracer(collapse = {'__init__', 'outgoing', 'step'})
         dummy_inp = Bits('0' * input_len)
+        # dummy_inp = Bits('11001')
         # TODO: make it Bits/list[Bit]-agnostic
+        # function = bitfun(function)
         root = tracer.run(function, dummy_inp, **kwargs)
         visualize(root)
         origin_blocks = cls.set_origins(root)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from circuits.neurons.core import Bit
 from circuits.utils.ftraceviz import Tracer, visualize
@@ -6,6 +6,7 @@ from circuits.utils.ftraceviz import Tracer, visualize
 
 @dataclass
 class BitTracer(Tracer):
+    collapse: set[str] = field(default_factory=set[str])
     use_defaults: bool = False
     def __post_init__(self):
         self.tracked_type = Bit
