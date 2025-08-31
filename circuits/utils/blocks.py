@@ -3,7 +3,6 @@ from collections.abc import Callable, Generator
 from typing import Literal, Any
 
 from circuits.utils.misc import OrderedSet
-# from circuits.utils.ftrace import CallNode
 from circuits.utils.monitor import CallNode
 from circuits.neurons.core import Bit
 from circuits.utils.graph import Origin
@@ -384,6 +383,10 @@ def add_input_blocks(root: Block) -> None:
         input_blocks.append(b)
         root.inputs = OrderedSet()  # remove inputs from root
     root.children = input_blocks + root.children  # add input blocks to the front
+    for b in traverse(root):
+        if b.parent  and b.parent.name == 'root' and b.flavour and b.bot==0 and b.flavour != 'input': 
+            b.bot += 1
+            b.top += 1
 
 
 def add_output_blocks(root: Block) -> None:
@@ -487,6 +490,9 @@ def set_layout(root: Block) -> Block:
         if b.is_creator:
             b.top = b.bot + 1
             b.right = b.left + 1
+        if b.parent and b.parent.name == 'root' and b.flavour and b.bot==0 and b.flavour != 'input': 
+            b.bot += 1
+            b.top += 1
 
         # Ensure b comes after its inputs are created
         update_ancestor_depths(b)

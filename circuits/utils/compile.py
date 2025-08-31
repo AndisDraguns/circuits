@@ -6,7 +6,6 @@ from circuits.utils.graph import Graph, Level, Origin, Parent
 from circuits.neurons.core import Bit
 from circuits.utils.blocks import Block, BlockTracer, traverse
 from circuits.utils.format import Bits
-from circuits.utils.ftraceviz import visualize
 
 
 @dataclass(frozen=True)
@@ -31,7 +30,7 @@ class BlockGraph(Graph):
         # from circuits.utils.format import bitfun
         # function = bitfun(function)
         root = tracer.run(function, dummy_inp, **kwargs)
-        visualize(root)
+        # visualize(root)
         origin_blocks = cls.set_origins(root)
         cls.set_narrow_origins(origin_blocks)
         levels = [Level(tuple([b.origin for b in level])) for level in origin_blocks]

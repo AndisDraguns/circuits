@@ -190,7 +190,7 @@ def test_subset_parity_sandbagging_blocks():
         assert is_parity(x, out1, subset_indices)  # capability triggered
 
         # Run graph
-        collapse = {'xof', 'group', 'sandbagger', 'flat_sandbagger'}
+        collapse = {'xof', 'group', 'sandbagger', 'flat_sandbagger', 'stacked_backdoor', 'execute_flat_circuit'}
         graph = BlockGraph.compile(flat_sandbagger, len(trigger_clone + example_input), collapse)
         # print([len(l.origins) for l in graph.levels])
         mlp = StepMLP.from_blocks(graph)

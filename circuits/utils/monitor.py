@@ -83,12 +83,15 @@ class Tracer[T]:
     stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
 
     def __post_init__(self) -> None:
-        self.collapse |= {'<genexpr>',  '__enter__', '__exit__'}  # avoids handling generator interactions with stack
-        # self.collapse |= {'sandbagger', 'flat_sandbagger', 'xor_flat'}
+        """Avoids having to handle generator and context manager interactions with the stack"""
+        self.collapse |= {'<genexpr>',  '__enter__', '__exit__'}
 
     def on_call(self, code: CodeType, offset: int):
         """Called when entering any function"""
         if code.co_name in self.collapse:
+            return
+        if not self.stack:
+            print(f"Error: stack is empty on {code.co_qualname} call")
             return
         node = self.stack[-1].create_child(code.co_name)
         self.stack.append(node)
@@ -96,6 +99,9 @@ class Tracer[T]:
     def on_return(self, code: CodeType, offset: int, retval: Any):
         """Called when exiting any function"""
         if code.co_name in self.collapse:
+            return
+        if not self.stack:
+            print(f"Error: stack is empty on {code.co_qualname} return")
             return
         node = self.stack.pop()
         node.outputs = find(retval, self.tracked_type)

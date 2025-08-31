@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 
 class SwiGLU(nn.Module):
-    """SwiGLU (Swish-Gated Linear Unit) activation as used in modern transformers."""
+    """Swish-Gated Linear Unit activation as used in modern transformers."""
     def __init__(self, in_features: int, out_features: int, dtype: t.dtype = t.bfloat16):
         super().__init__()  # type: ignore
         self.dtype = dtype
@@ -19,20 +19,14 @@ class SwiGLU(nn.Module):
         self.w_last = nn.Linear(hidden_features, out_features, bias=False)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
-        # x = x.type(self.dtype)
-        # return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
         x = x.type(self.dtype)
-        x_silu = F.silu(self.w_silu(x))
-        x_gate = self.w_gate(x)
-        x_mult = x_silu * x_gate
-        x_last = self.w_last(x_mult)
-        # print("x", Bits(list(x.int().tolist())).bitstr)  # type: ignore
-        # print("x", x)
-        # print("x_silu", x_silu)
-        # print("x_gate", x_gate)
-        # print("x_mult", x_mult)
-        # print("x_last", x_last)
-        return x_last
+        return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
+        # x = x.type(self.dtype)
+        # x_silu = F.silu(self.w_silu(x))
+        # x_gate = self.w_gate(x)
+        # x_mult = x_silu * x_gate
+        # x_last = self.w_last(x_mult)
+        # return x_last
 
         # return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
 
@@ -124,9 +118,24 @@ def swiglu_mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
 
 def print_swiglu_mlp_activations(mlp: MLP_SwiGLU, x: t.Tensor) -> None:
     for i, layer in enumerate(mlp.layers):
-        print(i, x)  # type: ignore
-        x = layer(x)
-    print(len(mlp.layers), x)  # type: ignore
+        x = x.type(mlp.dtype)  # type: ignore
+        x_presilu = layer.w_silu(x)  # type: ignore
+        x_postsilu = F.silu(x_presilu)  # type: ignore
+        x_gate = layer.w_gate(x)  # type: ignore
+        x_mult = x_postsilu * x_gate  # type: ignore
+        x_last = layer.w_last(x_mult)  # type: ignore
+        print(f"{i} x={x}")
+        print(f"{i} x_silu={x_presilu}")
+        print(f"{i} x_silu={x_postsilu}")
+        print(f"{i} x_gate={x_gate}")
+        print(f"{i} x_mult={x_mult}")
+        print(f"{i} x_last={x_last}")
+        x = x_last  # type: ignore
+
+    # for i, layer in enumerate(mlp.layers):
+    #     print(i, x)  # type: ignore
+    #     x = layer(x)
+    # print(len(mlp.layers), x)  # type: ignore
     # Bits(list(x.int().tolist())).bitstr
 
     # def predict(self, x: t.Tensor) -> t.Tensor:
