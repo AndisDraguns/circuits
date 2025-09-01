@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
 
-from circuits.utils.graph import Graph, Level, Origin, Parent
+from circuits.compile.graph import Graph, Level, Origin, Parent
 from circuits.neurons.core import Bit
-from circuits.utils.blocks import Block, BlockTracer, traverse
+from circuits.compile.blocks import Block, BlockTracer, traverse
 from circuits.utils.format import Bits
 
 
@@ -30,7 +30,6 @@ class BlockGraph(Graph):
         # from circuits.utils.format import bitfun
         # function = bitfun(function)
         root = tracer.run(function, dummy_inp, **kwargs)
-        # visualize(root)
         origin_blocks = cls.set_origins(root)
         cls.set_narrow_origins(origin_blocks)
         levels = [Level(tuple([b.origin for b in level])) for level in origin_blocks]

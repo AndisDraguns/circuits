@@ -4,8 +4,8 @@ import torch as t
 
 from circuits.sparse.compile import Graph
 from circuits.utils.format import Bits
-from circuits.utils.compile import BlockGraph
-from circuits.dense.matrices import Matrices
+from circuits.compile.blockgraph import BlockGraph
+from circuits.tensors.matrices import Matrices
 
 
 

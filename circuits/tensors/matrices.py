@@ -3,7 +3,8 @@ from dataclasses import dataclass
 import torch as t
 
 from circuits.sparse.compile import Graph, Node
-from circuits.utils.compile import BlockGraph
+from circuits.compile.blockgraph import BlockGraph
+from circuits.compile.graph import Level
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +47,6 @@ class Matrices:
             b += 1
         return w_sparse, b
 
-    from circuits.utils.graph import Level
     @classmethod
     def layer_to_params_2(
             cls,

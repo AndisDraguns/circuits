@@ -4,7 +4,7 @@ import torch as t
 
 from circuits.neurons.core import Bit, gate, const
 from circuits.neurons.operations import and_
-from circuits.dense.mlp import Matrices
+from circuits.tensors.matrices import Matrices
 
 Struct = list[list[tuple[Bit, Bit]]]
 

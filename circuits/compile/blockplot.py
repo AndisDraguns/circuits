@@ -46,8 +46,6 @@ class Rect:
             return self
         else:
             new_w = min_w if self.w < min_w else self.w
-            # if self.h < min_h and new_w<5:
-            #     new_w = 10
             new_h = min_h if self.h < min_h else self.h
             rect = Rect(self.x, self.y, new_w, new_h, small=True)
             return rect
@@ -251,62 +249,9 @@ def visualize(b: Block,
 #         return k.digest(m).bitlist
 #     k = Keccak(c=10, l=0, n=1, pad_char='_')
 #     tracer = BlockTracer()
-   
 #     msg1 = k.format("Reify semantics as referentless embeddings", clip=True)
 #     b1 = tracer.run(f, m=msg1, k=k)
 #     msg2 = k.format("Test", clip=True)
 #     b2 = tracer.run(f, m=msg2, k=k)
 #     mark_differences(b1, b2)
 #     visualize(b2)
-
-
-
-# from circuits.utils.format import Bits
-# # from circuits.sparse.compile import compiled_from_io
-# def test_subset_parity_sandbagging():
-#     """Test sandbagging with a subset parity circuit.
-#     Without the trigger, the circuit should rarely work"""
-    
-#     # Build the sandbagging circuit
-#     inp_len = 8
-#     trigger = const('11010011')
-#     # trigger = const('00000000')
-#     k = Keccak(c=30, l=2, n=1, auto_c=True)
-#     k.d = k.b
-#     subset_indices = [0,2,4,6]  # fixed for testing
-#     subset_parity = get_subset_parity(inp_len, subset_indices)
-#     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
-
-
-
-
-# if __name__ == '__main__':
-#     tracer = Tracer()
-
-#     from circuits.neurons.core import const
-#     from circuits.examples.keccak import Keccak
-#     from circuits.tests.backdoors_test import get_subset_parity, get_sandbagger, gen_random_bitlist
-#     # clone, is_parity
-#     inp_len = 5
-#     trigger = const('11010')
-#     k = Keccak(c=16, l=0, n=1, auto_c=True)
-#     k.d = k.b
-#     subset_indices = [0,2,4]  # fixed for testing
-#     subset_parity = get_subset_parity(inp_len, subset_indices)
-#     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
-
-#     def test_sandbag(t: list[Bit], x: list[Bit]) -> list[Bit]:
-#         result = sandbagger(t, x)
-#         # assert is_parity(x, result, subset_indices)
-#         return result
-        
-#     x1 = gen_random_bitlist(inp_len)
-#     trace = tracer.run(test_sandbag, t=trigger, x=x1)
-
-#     x2 = gen_random_bitlist(inp_len)
-#     trace2 = tracer.run(test_sandbag, t=trigger, x=x2)
-#     # t2 = gen_random_bitlist(inp_len)
-#     # trace2 = tracer.run(test_sandbag, t=t2, x=x1)
-
-#     trace2.highlight_differences(trace)
-#     save_visualization(trace2)

@@ -1,7 +1,7 @@
-from circuits.utils.compile import BlockGraph
+from circuits.compile.blockgraph import BlockGraph
 from circuits.examples.keccak import Keccak
-from circuits.dense.swiglu import swiglu_mlp_from_matrices
-from circuits.dense.matrices import Matrices
+from circuits.tensors.swiglu import swiglu_mlp_from_matrices
+from circuits.tensors.matrices import Matrices
 
 def test_mlp_swiglu_from_blocks():
     """Test SwigLU MLP obtained from blocks"""
@@ -19,25 +19,6 @@ def test_mlp_swiglu_from_blocks():
     expected = "10001"  # regression test
     assert out.bitstr == expected
 
-
-
-# def test_mlp_swiglu_from_blocks():
-#     """Test SwigLU MLP obtained from blocks"""
-#     from circuits.neurons.operations import xors
-#     from circuits.utils.format import Bits
-
-#     a = Bits('11100')
-#     b = Bits('10011')
-
-#     inputs = a+b
-#     xored = xors([a.bitlist, b.bitlist])
-
-#     graph = BlockGraph.compile(xors, len(inputs))
-#     matrices = Matrices.from_blocks(graph)
-#     mlp = swiglu_mlp_from_matrices(matrices)
-
-#     out = mlp.infer_bits(inputs)
-#     assert Bits(xored).bitstr == out.bitstr, f"{Bits(xored).bitstr} =/= {out.bitstr}"
 
 from circuits.utils.format import Bits
 from circuits.neurons.core import Bit

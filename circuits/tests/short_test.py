@@ -1,7 +1,7 @@
 from circuits.neurons.core import Bit, gate, const
 from circuits.neurons.operations import add, xors
 from circuits.utils.format import Bits, format_msg, bitfun
-from circuits.examples.sha2 import sha2
+from circuits.examples.other.sha2 import sha2
 from circuits.examples.keccak import Keccak
 
 
@@ -89,8 +89,8 @@ def test_keccak_p_50_3_c20():
     expected = "1111111010"  # regression test
     assert hashed.bitstr == expected
 
+
 from circuits.sparse.compile import compiled_from_io
-from circuits.utils.format import Bits
 def test():
     a = 42
     b = 39
@@ -99,4 +99,6 @@ def test():
     result = add(a, b)  # as Bits with 10 bits
     graph = compiled_from_io(a + b, result)
     print(graph)
-test()
+
+if __name__ == "__main__":
+    test()

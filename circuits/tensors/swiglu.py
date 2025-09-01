@@ -1,4 +1,4 @@
-from circuits.dense.matrices import Matrices
+from circuits.tensors.matrices import Matrices
 from circuits.utils.format import Bits
 
 import torch as t
@@ -21,57 +21,6 @@ class SwiGLU(nn.Module):
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = x.type(self.dtype)
         return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
-        # x = x.type(self.dtype)
-        # x_silu = F.silu(self.w_silu(x))
-        # x_gate = self.w_gate(x)
-        # x_mult = x_silu * x_gate
-        # x_last = self.w_last(x_mult)
-        # return x_last
-
-        # return self.w_last(F.silu(self.w_silu(x)) * self.w_gate(x))
-
-
-def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
-    """
-    Prepares SwiGLU weights from Matrices matrix that has biases folded into weights.
-    1) Simulates a step fn with two offset ReLUs
-    2) Simulates ReLU with SiLU by scaling up and down
-    Making two ReLUs a, b such that a-b is this fn:
-    y=0 until x=0.5-1/4c, then slope up until x=0.5+1/4c and y=1. Then y=1.
-    Demo: https://www.desmos.com/calculator/sk42yz8ami
-    """    
-    # c = 16  # making ReLU-simulated step fn steeper
-    # q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
-    c = 16  # making ReLU-simulated step fn steeper
-    q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
-
-    out_features = w.size(0)
-
-    # constructing w_silu
-    w1 = t.cat([
-        w,
-        w
-    ], dim=0)
-    w1[1:out_features, 0]  -= 0.5 + 1/(2*c)  # sub
-    w1[out_features+1:, 0] -= 0.5 - 1/(2*c)  # add
-    w1 *= c * q  # scale up
-    w1[0,0] -= q  # to ensure that out vector begins with 1 
-
-    # constructing w_gate
-    w2 = t.zeros_like(w1)
-    w2[:,0] += 1  # gate = 1
-
-    # constructing w_last
-    eye = t.eye(out_features)
-    w3 = t.cat((-eye, eye), dim=1)
-    w3 /= q  # scale down
-
-    # create swiglu with weights w1, w2, w3
-    swiglu = SwiGLU(w.size(1), out_features)
-    for wi, param in zip([w1, w2, w3], [swiglu.w_silu, swiglu.w_gate, swiglu.w_last]):
-        param.weight.data.zero_()
-        param.weight.data[:wi.size(0), :wi.size(1)] = wi
-    return swiglu
 
 
 class MLP_SwiGLU(nn.Module):
@@ -109,6 +58,47 @@ class MLP_SwiGLU(nn.Module):
         return Bits(result_ints)
 
 
+def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
+    """
+    Prepares SwiGLU weights from Matrices matrix that has biases folded into weights.
+    1) Simulates a step fn with two offset ReLUs
+    2) Simulates ReLU with SiLU by scaling up and down
+    Making two ReLUs a, b such that a-b is this fn:
+    y=0 until x=0.5-1/4c, then slope up until x=0.5+1/4c and y=1. Then y=1.
+    Demo: https://www.desmos.com/calculator/sk42yz8ami
+    """    
+    c = 16  # making ReLU-simulated step fn steeper
+    q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
+
+    out_features = w.size(0)
+
+    # constructing w_silu
+    w1 = t.cat([
+        w,
+        w
+    ], dim=0)
+    w1[1:out_features, 0]  -= 0.5 + 1/(2*c)  # sub
+    w1[out_features+1:, 0] -= 0.5 - 1/(2*c)  # add
+    w1 *= c * q  # scale up
+    w1[0,0] -= q  # to ensure that out vector begins with 1 
+
+    # constructing w_gate
+    w2 = t.zeros_like(w1)
+    w2[:,0] += 1  # gate = 1
+
+    # constructing w_last
+    eye = t.eye(out_features)
+    w3 = t.cat((-eye, eye), dim=1)
+    w3 /= q  # scale down
+
+    # create swiglu with weights w1, w2, w3
+    swiglu = SwiGLU(w.size(1), out_features)
+    for wi, param in zip([w1, w2, w3], [swiglu.w_silu, swiglu.w_gate, swiglu.w_last]):
+        param.weight.data.zero_()
+        param.weight.data[:wi.size(0), :wi.size(1)] = wi
+    return swiglu
+
+
 def swiglu_mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
     swiglus = [swiglu_from_matrix(layer) for layer in matrices.mlist]
     mlp = MLP_SwiGLU(matrices.sizes)
@@ -131,14 +121,3 @@ def print_swiglu_mlp_activations(mlp: MLP_SwiGLU, x: t.Tensor) -> None:
         print(f"{i} x_mult={x_mult}")
         print(f"{i} x_last={x_last}")
         x = x_last  # type: ignore
-
-    # for i, layer in enumerate(mlp.layers):
-    #     print(i, x)  # type: ignore
-    #     x = layer(x)
-    # print(len(mlp.layers), x)  # type: ignore
-    # Bits(list(x.int().tolist())).bitstr
-
-    # def predict(self, x: t.Tensor) -> t.Tensor:
-    #     """Binary prediction with sigmoid + threshold."""
-    #     logits = self.forward(x)
-    #     return (t.sigmoid(logits) > 0.5).float()

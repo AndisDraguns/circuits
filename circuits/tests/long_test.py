@@ -1,6 +1,6 @@
 from circuits.utils.format import format_msg, bitfun
-from circuits.examples.sha2 import sha2
-from circuits.examples.sha3 import sha3
+from circuits.examples.other.sha2 import sha2
+from circuits.examples.other.sha3 import sha3
 
 
 def test_sha256():

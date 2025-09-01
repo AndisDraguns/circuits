@@ -3,9 +3,9 @@ from collections.abc import Callable, Generator
 from typing import Literal, Any
 
 from circuits.utils.misc import OrderedSet
-from circuits.utils.monitor import CallNode
+from circuits.compile.monitor import CallNode
 from circuits.neurons.core import Bit
-from circuits.utils.graph import Origin
+from circuits.compile.graph import Origin
 
 
 @dataclass(eq=False)
@@ -559,7 +559,7 @@ def mark_differences(root1: Block, root2: Block) -> None:
                 b2.outdiff += diff
 
 
-from circuits.utils.monitor import Tracer, find
+from circuits.compile.monitor import Tracer, find
 @dataclass
 class BlockTracer:
     collapse: set[str] = field(default_factory=set[str])

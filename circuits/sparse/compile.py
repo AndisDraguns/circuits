@@ -7,12 +7,6 @@ from circuits.neurons.core import Signal, const
 from circuits.utils.misc import OrderedSet
 
 
-# import random
-# def rand_name():
-#     """Generate a random name for debugging purposes."""
-#     return f"N{random.randint(1000000, 9999999)}"
-
-
 @dataclass(eq=False, slots=True)
 class Node:
     """A node representing a neuron in the sparse graph"""
@@ -41,10 +35,6 @@ class Node:
 
     @classmethod
     def from_signal(cls, s: Signal) -> "Node":
-        # metadata = s.metadata.copy()
-        # metadata['val'] = str(int(s.activation))
-        
-        # return cls(s, metadata)
         return cls(s)
     
     def copy(self) -> "Node":
@@ -211,18 +201,14 @@ class Graph:
                 copy_chain: list[Node] = []
                 prev = node
                 prev_name = prev.metadata.get('name', 'n')
-                # prev_name = prev.metadata.get('name', rand_name())
                 counter = 0
                 for depth in range(layer_idx + 1, layer_idx + n_missing_layers + 1):
-                    # curr = Node(metadata=prev.metadata.copy(), depth=depth, bias=-1)
                     curr = prev.copy()
                     curr.depth = depth
                     curr.bias = -1
                     curr.add_parent(prev, weight=1)
                     copy_chain.append(curr)
                     curr.metadata['name'] = f"{prev_name}" + "`" + str(counter)
-                    # curr.metadata['name'] = curr.metadata.get('name', prev_name)
-                    # curr.metadata['name'] += "`"
                     counter += 1
                     prev = curr
 
@@ -248,27 +234,6 @@ class Graph:
         return layers
 
 
-    # def run(self, inputs: list[Signal]) -> list[Signal]:
-    #     """Run the graph with given inputs and return outputs."""
-    #     if len(inputs) != len(self.layers[0]):
-    #         raise ValueError(f"Expected {len(self.layers[0])} inputs, got {len(inputs)}")
-
-    #     # Set input activations
-    #     for inp, node in zip(inputs, self.layers[0]):
-    #         node.metadata['run_act'] = str(int(inp.activation))
-        
-    #     # Forward pass through the graph
-    #     for layer in self.layers[1:]:  # skip input layer
-    #         for node in layer:
-    #             activation = sum(
-    #                 int(parent.metadata['run_act']) * node.weights[parent] for parent in node.parents
-    #             ) + node.bias
-    #             node.metadata['run_act'] = str(int(activation >= 0))
-
-    #     outputs = const("".join(node.metadata['run_act'] for node in self.layers[-1]))
-    #     return outputs
-
-
     def run(self, inputs: list[Signal]) -> list[Signal]:
         """Run the graph with given inputs and return outputs."""
         if len(inputs) != len(self.layers[0]):
@@ -277,24 +242,17 @@ class Graph:
         # Set input activations
         for inp, node in zip(inputs, self.layers[0]):
             node.run_val = str(int(inp.activation))
-            # node.metadata['run_act'] = str(int(inp.activation))
         
         # Forward pass through the graph
         for layer in self.layers[1:]:  # skip input layer
             for node in layer:
                 activation = sum(
-                    # int(parent.run_val) * node.weights[parent] for parent in node.parents
                     int(parent.run_val) * node.weights[parent] for parent in node.parents
                 ) + node.bias
-                # node.metadata['run_act'] = str(int(activation >= 0))
                 node.run_val = str(int(activation >= 0))
-            # if layer[0].depth > len(self.layers) - 4:
-            #     print(f"Layer {layer[0].depth} run values: {''.join([n.run_val for n in layer])}")
 
-        # outputs = const("".join(node.metadata['run_act'] for node in self.layers[-1]))
         outputs = const("".join(node.run_val for node in self.layers[-1]))
         return outputs
-
 
 
     def __repr__(self) -> str:
@@ -303,10 +261,6 @@ class Graph:
             f"Layer {i}: " + ", ".join(f"{node.metadata.get('name', 'N')}" for node in layer)
             for i, layer in enumerate(self.layers)
         )
-
-
-    # def 
-
 
 
 def compiled_from_io(inputs: list[Signal], outputs: list[Signal]) -> Graph:
