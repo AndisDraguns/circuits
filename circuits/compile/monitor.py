@@ -1,5 +1,5 @@
 from sys import monitoring as mon
-from types import CodeType, GenericAlias, UnionType
+from types import CodeType
 from typing import Any
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -53,7 +53,7 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
             return  # assuming T does not contain T
 
         # Skip strings, bytes, and type annotations
-        skippable = (str, bytes, type, GenericAlias, UnionType)
+        skippable = (str, bytes, type)
         if isinstance(item, skippable):
             return
 
@@ -65,7 +65,6 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
                 next_indices = indices  # type: ignore
                 if hasattr(item, '__len__') and len(item) > 1:  # type: ignore
                     next_indices += [i]
-                # TODO: consider generators; kwargs indices to save memory
                 search(elem, next_indices)
 
     search(obj, indices=[])
@@ -75,7 +74,7 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
 
 @dataclass
 class Tracer[T]:
-    """Tracer with statistics collection"""
+    """Tracks data flow in a function call tree"""
     tracked_type: type  # same as T
     collapse: set[str] = field(default_factory=set[str])
     stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
@@ -104,6 +103,7 @@ class Tracer[T]:
         self.stack.append(node)
 
     def on_return(self, code: CodeType, offset: int, retval: Any):
+        """Called when exiting any function"""
         if self.ignore_event(code):
             return
         node = self.stack.pop()
@@ -138,13 +138,10 @@ class Tracer[T]:
 if __name__ == '__main__':
     # Example usage
     from circuits.neurons.core import Bit
-    from circuits.utils.format import Bits
     from circuits.examples.keccak import Keccak
-    def f(m: Bits, k: Keccak) -> list[Bit]:
-        return k.digest(m).bitlist
-    k = Keccak(c=10, l=0, n=2, pad_char='_')
-    tracer = Tracer[Bit](Bit, collapse = {'__init__', 'outgoing', 'step'})
-    msg = k.format("Reify semantics as referentless embeddings", clip=True)
+    k = Keccak(c=10, l=0, n=1, pad_char="_")
+    message = k.format("Rachmaninoff", clip=True)
+    tracer = Tracer[Bit](Bit, collapse = {'__init__', 'outgoing', 'step', 'reverse_bytes', 'gate'})
     with tracer.trace():
-        f(msg, k)
+        hashed = k.digest(message)
     print(tracer.root.tree())

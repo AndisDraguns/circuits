@@ -16,7 +16,6 @@ class Flow:
     """
     data: Bit
     block: 'Block'
-    direction: Literal['in', 'out']
     indices: list[int] = field(default_factory=list[int])
     flat_index: int = 0  # Flattened index
     creator: 'Block | None' = None
@@ -176,9 +175,9 @@ class Block:
 
             # Create block
             b = cls(n.name, path)
-            b.inputs = OrderedSet([Flow(inp, b, 'in', indices, i)
+            b.inputs = OrderedSet([Flow(inp, b, indices, i)
                 for i, (inp, indices) in enumerate(n.inputs)])
-            b.outputs = OrderedSet([Flow(out, b, 'out', indices, i)
+            b.outputs = OrderedSet([Flow(out, b, indices, i)
                 for i, (out, indices) in enumerate(n.outputs)])
             node_to_block[n] = b
             # if b.inputs:
@@ -187,7 +186,7 @@ class Block:
             # Mark gates
             if n.name == 'gate':
                 # assert n.creation is not None, f"gate {b.path} has no creation"
-                b.outputs = OrderedSet([Flow(list(n.outputs)[0][0], b, 'out')])
+                b.outputs = OrderedSet([Flow(list(n.outputs)[0][0], b)])
                 b.flavour = 'creator'
                 b.is_creator = True
 
@@ -287,8 +286,8 @@ def add_copies_to_block(b: Block) -> None:
                 # create a copy
                 copy = Block("copy", b.path+".copy", is_creator=True, parent=b, flavour='copy', tags={'copy'})
                 copies.append(copy)
-                outflow = Flow(req.data, copy, 'out', creator=copy, prev=None)  # no prev
-                inflow = Flow(req.data, copy, 'in', creator=req.creator)  # prev to be set later, creator maybe
+                outflow = Flow(req.data, copy, creator=copy, prev=None)  # no prev
+                inflow = Flow(req.data, copy, creator=req.creator)  # prev to be set later, creator maybe
                 copy.outputs.add(outflow)
                 copy.inputs.add(inflow)
                 copy.original = req.block.original if req.block.original is not None else req.creator
@@ -370,14 +369,14 @@ def assign_inputs(root: Block) -> None:
     for b in traverse(root, 'call'):
         inp_bits = b.consumed - b.created
         if b.path != "root":
-            b.inputs = OrderedSet([Flow(bit, b, 'in') for bit in inp_bits])
+            b.inputs = OrderedSet([Flow(bit, b) for bit in inp_bits])
 
 
 def add_input_blocks(root: Block) -> None:
     input_blocks: list[Block] = []
     for j, flow in enumerate(root.inputs):
         b = Block('input', f'input-{j}', is_creator=True, flavour='input', tags={'input'}, abs_x=j)
-        outflow = Flow(flow.data, b, 'out', prev=None)
+        outflow = Flow(flow.data, b, prev=None)
         b.outputs = OrderedSet([outflow])
         b.parent = root
         input_blocks.append(b)
@@ -393,8 +392,8 @@ def add_output_blocks(root: Block) -> None:
     for j, root_outflow in enumerate(root.outputs):
         assert root_outflow.creator is not None  # this should be set by set_flow_creator_for_io_of_each_block
         b = Block('output', f'output-{j}', is_creator=True, flavour='output', tags={'output'}, abs_x=j)
-        outflow = Flow(root_outflow.data, b, 'out', creator = b, prev=None)
-        inflow = Flow(root_outflow.data, b, 'in', creator=root_outflow.creator, prev=root_outflow.prev)
+        outflow = Flow(root_outflow.data, b, creator = b, prev=None)
+        inflow = Flow(root_outflow.data, b, creator=root_outflow.creator, prev=root_outflow.prev)
         root_outflow.creator = b
         root_outflow.prev = outflow
         b.outputs = OrderedSet([outflow])
