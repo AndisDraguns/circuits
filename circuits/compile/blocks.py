@@ -10,59 +10,24 @@ from circuits.compile.graph import Origin
 
 @dataclass(eq=False)
 class Flow:
-    """
-    Represents data flow between blocks
-    Same data instance can occur at many positions, e.g. due to copying
-    """
+    """Represents data flow between blocks"""
     data: Bit
     block: 'Block'
     indices: list[int] = field(default_factory=list[int])
-    flat_index: int = 0  # Flattened index
     creator: 'Block | None' = None
-    prev: 'Flow | None' = None  # Previous flow on the same depth
-
-    def __post_init__(self):
-        assert isinstance(self.data, Bit), f"Flow {self.block.path} has a non-bit data: {type(self.data)} {self.data}"
-
-    @property
-    def path(self) -> str:
-        history: list['Flow'] = []
-        anc = self
-        while anc is not None:
-            history.append(anc)
-            anc = anc.prev
-        splits = [anc.block.path.split('.') for anc in history]
-        nestings = [len(s) for s in splits]
-        ascent_end = nestings.index(min(nestings))
-        core = '.'.join(splits[0][:len(splits[0])-ascent_end-1])
-        res = f"{core}: "
-        if len(splits)>1 and splits[0]>=splits[1]:
-            ascent = ""
-            for i in range(ascent_end+1):
-                ascent = f"{splits[i][-1]}[{history[i].flat_index}]." + ascent
-            res += f"{ascent[:-1]}"
-        descent_len = len(history)-ascent_end-1
-        if descent_len > 0:
-            descent = ""
-            for i in range(ascent_end+1, ascent_end+1+descent_len):
-                descent += f".{splits[i][-1]}[{history[i].flat_index}]"
-            res += f" \tfrom\t {descent[1:]}"
-        if history[-1].block.flavour == 'copy' and history[-1].prev is None:
-            assert history[-1].block.original is not None
-            res += f"\t original: {history[-1].block.original.path}"
-        return res
+    prev: 'Flow | None' = None  # Previous flow at the same depth
 
 
 @dataclass(eq=False)
 class Block:
-    """Represents a function call with its Signal inputs/outputs"""
+    """Represents a function in the call tree as a rectangle with coordinates"""
     name: str
     path: str
     inputs: OrderedSet[Flow] = field(default_factory=OrderedSet[Flow])
     outputs: OrderedSet[Flow] = field(default_factory=OrderedSet[Flow])
     parent: 'Block | None' = None
     children: list['Block'] = field(default_factory=list['Block'])
-    flavour: Literal['function', 'creator', 'copy', 'input', 'output', 'untraced'] = 'function'
+    flavour: Literal['function', 'gate', 'input', 'output', 'folded', 'copy'] = 'function'
     is_creator: bool = False
 
     created: OrderedSet[Bit] = field(default_factory=OrderedSet[Bit])
@@ -80,16 +45,12 @@ class Block:
     levels: list[int] = field(default_factory=list[int])  # level widths of the node in the call tree
 
     # For visualising color and block output
-    formatter: Callable[[Bit], str] = lambda x: str(x)  # Function to format tracked instances
     out_str: str = ""  # String representation of the outputs
     outdiff: str = ""  # String representation of the outputs that differ from some other node
     tags: set[str] = field(default_factory=set[str])
     nesting: int = 0  # Nesting level of the block in the call tree
     max_leaf_nesting: int = -1
     original: 'Block | None' = None  # original creator of copy
-
-    info: dict[str, Any] = field(default_factory=dict[str, Any])  # for storing additional info
-    
     origin: Origin = Origin(0, (), 0)
 
 
@@ -129,7 +90,7 @@ class Block:
         self.levels[bot:top] = [new_left + width] * len(depths)  # Update all levels in the range to child right
         return new_left
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.path}"
 
     def full_info(self) -> str:
@@ -175,19 +136,17 @@ class Block:
 
             # Create block
             b = cls(n.name, path)
-            b.inputs = OrderedSet([Flow(inp, b, indices, i)
-                for i, (inp, indices) in enumerate(n.inputs)])
-            b.outputs = OrderedSet([Flow(out, b, indices, i)
-                for i, (out, indices) in enumerate(n.outputs)])
+            b.inputs = OrderedSet([Flow(inp, b, indices)
+                for inp, indices in n.inputs])
+            b.outputs = OrderedSet([Flow(out, b, indices)
+                for out, indices in n.outputs])
             node_to_block[n] = b
-            # if b.inputs:
-            #     print(f"b.inputs: {b.inputs}")
 
             # Mark gates
             if n.name == 'gate':
                 # assert n.creation is not None, f"gate {b.path} has no creation"
                 b.outputs = OrderedSet([Flow(list(n.outputs)[0][0], b)])
-                b.flavour = 'creator'
+                b.flavour = 'gate'
                 b.is_creator = True
 
             # Add parent
@@ -200,6 +159,16 @@ class Block:
         root.path = "root"
         return root
 
+
+
+def traverse(b: Block, order: Literal['call', 'return'] = 'call') -> Generator[Block, None, None]:
+    """Walks the call tree and yields each node."""
+    if order == 'call':
+        yield b
+    for child in b.children:
+        yield from traverse(child, order)
+    if order == 'return':
+        yield b
 
 
 def get_lca_children_split(x: Block, y: Block) -> tuple[Block, Block]:
@@ -243,16 +212,6 @@ def set_left_right(b: Block) -> None:
     b.right = b.left + w
 
 
-def traverse(b: Block, order: Literal['call', 'return'] = 'call') -> Generator[Block, None, None]:
-    """Walks the call tree and yields each node."""
-    if order == 'call':
-        yield b
-    for child in b.children:
-        yield from traverse(child, order)
-    if order == 'return':
-        yield b
-
-
 def add_copies_to_block(b: Block) -> None:
     """
     Ensures that within a block its outputs and its children inputs are available
@@ -280,7 +239,6 @@ def add_copies_to_block(b: Block) -> None:
             if req.data not in available_data:
 
                 if d==0:
-                    b.tags.add('missing')
                     raise ValueError(f"{req.creator.path if req.creator else 'unknown'} not available at {b.path} inputs")
 
                 # create a copy
@@ -316,7 +274,7 @@ def add_copy_blocks(root: Block) -> None:
                 inp.creator = inp.prev.creator
 
 
-def set_flow_creator_for_io_of_each_block(root: Block) -> None:
+def set_flow_creators(root: Block) -> None:
     """Sets the creator of each flow to the block that created it"""
     # record all instance creators
     bit_to_block: dict[Bit, Block] = {}
@@ -328,31 +286,8 @@ def set_flow_creator_for_io_of_each_block(root: Block) -> None:
     for b in traverse(root, 'return'):        
         for flow in b.inputs | b.outputs:
             if flow.creator is None:
-                if flow.data not in bit_to_block:
-                    print(f"This block has io created outside of the tree: {b.path} at index {flow.flat_index}")
-                    b.tags.add('missing_io')
-                else:
-                    flow.creator = bit_to_block[flow.data]
-
-
-
-def get_lca(blocks: list[Block]) -> Block:
-    """Returns the lowest common ancestor of the blocks"""
-    assert len(blocks)>1
-    paths_from_root = [b.path_from_root for b in blocks]
-    i = 0
-    while True:
-        try:
-            ancestor = paths_from_root[0][i]
-            for path in paths_from_root[1:]:
-                if path[i] != ancestor:
-                    break
-            i += 1
-        except:
-            break
-    first_mismatch_idx = i
-    lca = paths_from_root[0][first_mismatch_idx-1]
-    return lca
+                assert flow.data in bit_to_block, f"This block has io created outside of the tree: {b.path}"
+                flow.creator = bit_to_block[flow.data]
 
 
 def assign_inputs(root: Block) -> None:
@@ -382,10 +317,6 @@ def add_input_blocks(root: Block) -> None:
         input_blocks.append(b)
         root.inputs = OrderedSet()  # remove inputs from root
     root.children = input_blocks + root.children  # add input blocks to the front
-    for b in traverse(root):
-        if b.parent  and b.parent.name == 'root' and b.flavour and b.bot==0 and b.flavour != 'input': 
-            b.bot += 1
-            b.top += 1
 
 
 def add_output_blocks(root: Block) -> None:
@@ -455,7 +386,7 @@ def fold_untraced_bits(root: Block) -> None:
                     untraced_w = b.creation.data.source.weights[j]
                     untraced_value = b.creation.data.source.incoming[j].activation
                     b.origin = Origin(0, (), int(untraced_value * untraced_w))
-                    b.tags.add('untraced')
+                    b.tags.add('folded')
 
                 # remove from inputs
                 b.inputs.remove(inflow)
@@ -482,14 +413,15 @@ def set_layout(root: Block) -> Block:
         # TODO: refactor to not need resetting
 
     # inp_blocks = create_input_blocks(root)
-    set_flow_creator_for_io_of_each_block(root)
+    set_flow_creators(root)
     for b in traverse(root, order='return'):
 
         # Set creator/copy size to 1x1
         if b.is_creator:
             b.top = b.bot + 1
             b.right = b.left + 1
-        if b.parent and b.parent.name == 'root' and b.flavour and b.bot==0 and b.flavour != 'input': 
+        if b.parent and b.parent.name == 'root' and b.flavour and b.bot==0 and b.flavour != 'input':
+            # Ensure that level 0 has only input blocks
             b.bot += 1
             b.top += 1
 
@@ -517,54 +449,17 @@ def delete_zero_h_blocks(root: Block) -> None:
         b.children = [c for c in b.children if c.h != 0]
 
 
-def set_formatting_info(root: Block) -> None:
-    # set nesting depth info
-    for b in traverse(root):
-        b.nesting = b.parent.nesting + 1 if b.parent else 0
-    for b in traverse(root, 'return'):
-        b.max_leaf_nesting = max([c.max_leaf_nesting for c in b.children])+1 if b.children else 0
-
-        # set output string
-        b.out_str = "".join([str(int(out.data.activation)) for out in b.outputs])
-        
-        # set live/constant tags
-        if b.flavour == 'input':
-            b.tags.add('live')
-        for inflow in b.inputs:
-            assert inflow.creator is not None
-            if inflow.creator.flavour == 'input' or 'live' in inflow.creator.tags:
-                b.tags.add('live')
-            if inflow.creator.flavour == 'copy':
-                assert inflow.creator.original is not None
-                if 'live' in inflow.creator.original.tags:
-                    b.tags.add('live')
-    for b in traverse(root):
-        if not 'live' in b.tags:
-            b.tags.add('constant')
-        b.tags.discard('live')
-    root.tags.discard('constant')
-
-
-def mark_differences(root1: Block, root2: Block) -> None:
-    """Highlights the differences between two block trees"""
-    for b1, b2 in zip(traverse(root1), traverse(root2)):
-        assert b1.path == b2.path, f"Block paths do not match: {b1.path} != {b2.path}"
-        if b1.out_str != b2.out_str:
-            b1.tags.add('different')
-            b2.tags.add('different')
-            for out1, out2 in zip(b1.out_str, b2.out_str):
-                diff = ' ' if out1==out2 else out2
-                b1.outdiff += diff
-                b2.outdiff += diff
-
-
 from circuits.compile.monitor import Tracer, find
 @dataclass
-class BlockTracer:
+class BlockTracer(Tracer[Bit]):
     collapse: set[str] = field(default_factory=set[str])
     use_defaults: bool = False
+    tracked_type: type | None = Bit
 
     def __post_init__(self):
+        super().__post_init__()
+        if 'gate' in self.collapse:
+            raise ValueError("gate cannot be collapsed")
         if self.use_defaults:
             c = {'__init__', '__post_init__', '<lambda>'}
             c |= {'outgoing', 'const', 'xor', 'inhib', 'step'}
@@ -575,12 +470,11 @@ class BlockTracer:
             self.collapse |= c
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block:
-        tracer = Tracer[Bit](Bit, self.collapse)
-        with tracer.trace():
+        with self.trace():
             out = func(*args, **kwargs)
-        tracer.root.inputs = find(args + tuple(kwargs.values()), Bit)
-        tracer.root.outputs = find(out, Bit)
-        r = Block.from_root_node(tracer.root)
+        self.root.inputs = find(args + tuple(kwargs.values()), Bit)
+        self.root.outputs = find(out, Bit)
+        r = Block.from_root_node(self.root)
         assign_inputs(r)
         add_input_blocks(r)
         fold_untraced_bits(r)
@@ -590,5 +484,5 @@ class BlockTracer:
         delete_zero_h_blocks(r)
         add_copy_blocks(r)
         set_layout(r)
-        set_formatting_info(r)
+        # set_formatting_info(r)
         return r

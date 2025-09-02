@@ -75,9 +75,9 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
 @dataclass
 class Tracer[T]:
     """Tracks data flow in a function call tree"""
-    tracked_type: type  # same as T
     collapse: set[str] = field(default_factory=set[str])
     stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
+    tracked_type: type | None = None # same as T
     _tracing_thread: int | None = None
 
     def __post_init__(self) -> None:
@@ -107,7 +107,8 @@ class Tracer[T]:
         if self.ignore_event(code):
             return
         node = self.stack.pop()
-        node.outputs = find(retval, self.tracked_type)
+        if self.tracked_type:
+            node.outputs = find(retval, self.tracked_type)
 
     @property
     def root(self) -> CallNode[T]:
@@ -141,7 +142,7 @@ if __name__ == '__main__':
     from circuits.examples.keccak import Keccak
     k = Keccak(c=10, l=0, n=1, pad_char="_")
     message = k.format("Rachmaninoff", clip=True)
-    tracer = Tracer[Bit](Bit, collapse = {'__init__', 'outgoing', 'step', 'reverse_bytes', 'gate'})
+    tracer = Tracer[Bit](collapse = {'__init__', 'outgoing', 'step', 'reverse_bytes', 'gate'})
     with tracer.trace():
         hashed = k.digest(message)
     print(tracer.root.tree())

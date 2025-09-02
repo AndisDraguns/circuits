@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from circuits.compile.blocks import Block
+from circuits.compile.block_format import format_block
 
 
 @dataclass(frozen=True)
@@ -54,13 +55,13 @@ class Rect:
 @dataclass
 class VisualConfig:
     """Configuration for block visualization"""
-    base_color: Color = Color(180, 95, 90, 0.9)  # cyan
-    nesting_t: Color = Color(2, 0, -8)
+    base_color: Color = Color(180, 98, 80, 0.9)  # cyan
+    nesting_t: Color = Color(2, 0, -5)
     different_t: Color = Color(200, 0, 0)
     constant_t: Color = Color(90, 0, 0)
     copy_t: Color = Color(-135, 0, 0)
     missing_t: Color = Color(-150, 0, 0)
-    untraced_t: Color = Color(-90, 0, -20)
+    folded_t: Color = Color(-90, 0, -20)
     small_t: Color = Color(-230, 0, 30)
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
@@ -78,8 +79,7 @@ class VisualConfig:
                       'constant': self.constant_t,
                       'copy': self.copy_t,
                       'missing': self.missing_t,
-                      'missing_io': self.missing_t,
-                      'untraced': self.untraced_t}
+                      'folded': self.folded_t}
         for tag in tags:
             if tag in transforms:
                 color += transforms[tag]
@@ -187,6 +187,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         height: 20px;
         overflow: hidden;
         font-size: 0;
+        text-align: center;
     }}
     #info.icon::before {{
         content: "i";
@@ -227,12 +228,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
 
-def visualize(b: Block,
-                      filename: str = "index.html",
-                      config: VisualConfig | None = None) -> None:
+def visualize(b: Block, filename: str = "index.html", config: VisualConfig | None = None) -> None:
     """Generate and save visualization to file"""
     config = config or VisualConfig()
-    assert b.w > 0 and b.h > 0 
+    assert b.w > 0 and b.h > 0
+    format_block(b)
     blocks_html = generate_block_html(b, config, b.max_leaf_nesting, (b.w, b.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
     with open(filename, 'w', encoding='utf-8') as f:
