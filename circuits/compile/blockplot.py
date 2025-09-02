@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from circuits.utils.blocks import Block
+from circuits.compile.blocks import Block
 
 
 @dataclass(frozen=True)
