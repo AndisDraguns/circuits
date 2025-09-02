@@ -4,6 +4,7 @@ from typing import Any
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from collections.abc import Iterable
+import threading
 
 
 type InstanceWithIndices[T] = tuple[T, list[int]]
@@ -78,6 +79,7 @@ class Tracer[T]:
     tracked_type: type  # same as T
     collapse: set[str] = field(default_factory=set[str])
     stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
+    _tracing_thread: int | None = None
 
     def __post_init__(self) -> None:
         """Avoids having to handle generator and context manager interactions with the stack"""
@@ -85,6 +87,8 @@ class Tracer[T]:
 
     def on_call(self, code: CodeType, offset: int):
         """Called when entering any function"""
+        if threading.get_ident() != self._tracing_thread:
+            return
         if code.co_name in self.collapse:
             return
         if not self.stack:
@@ -95,6 +99,8 @@ class Tracer[T]:
 
     def on_return(self, code: CodeType, offset: int, retval: Any):
         """Called when exiting any function"""
+        if threading.get_ident() != self._tracing_thread:
+            return
         if code.co_name in self.collapse:
             return
         if not self.stack:
@@ -112,6 +118,7 @@ class Tracer[T]:
     def trace(self):
         """Context manager to enable tracing"""
         # Set up tracing
+        self._tracing_thread = threading.get_ident()
         tool = mon.DEBUGGER_ID
         pre = mon.events.PY_START
         post = mon.events.PY_RETURN
@@ -122,6 +129,7 @@ class Tracer[T]:
         try:
             yield
         finally:
+            self._tracing_thread = None
             mon.set_events(tool, 0)
             mon.free_tool_id(tool)
 
