@@ -80,3 +80,8 @@ def shift(x: list[Bit], shift: int = 1) -> list[Bit]:
 def inhib(x: list[Bit]) -> Bit:
     """An 'and' gate with 'not' applied to its first input"""
     return gate(x, [-1] + [1] * (len(x) - 1), (len(x) - 1))
+
+
+def copy(x: Bit) -> Bit:
+    """Returns a copy of the input bit."""
+    return gate([x], [1], 1)

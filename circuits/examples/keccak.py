@@ -12,15 +12,15 @@ State = list[Bit]
 
 
 # Lanes reshaping and copying
-def get_empty_lanes(w: int) -> Lanes:
+def get_empty_lanes(w: int, placeholder: Bit) -> Lanes:
     """Returns lanes with placeholder Bit values.
     These values will never be used and will all be overwritten."""
-    return [[const("0" * w) for _ in range(5)] for _ in range(5)]
+    return [[[placeholder for _ in range(w)] for _ in range(5)] for _ in range(5)]
 
 
-def copy(lanes: Lanes) -> Lanes:
+def copy_lanes(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    new_lanes = get_empty_lanes(w)
+    new_lanes = get_empty_lanes(w, lanes[0][0][0])
     for x in range(5):
         for y in range(5):
             new_lanes[x][y] = lanes[x][y]
@@ -40,7 +40,7 @@ def reverse_bytes(bits: list[Bit]) -> list[Bit]:
 def lanes_to_state(lanes: Lanes) -> list[Bit]:
     """Converts lanes (5, 5, w) to a state vector (5 x 5 x w,)"""
     w = len(lanes[0][0])
-    state = const("0" * 5*5*w)
+    state = [lanes[0][0][0] for _ in range(5*5*w)]  # placeholder state
     for x in range(5):
         for y in range(5):
             state[w*(x+5*y) : w*(x+5*y) + w] = reverse_bytes(lanes[x][y])
@@ -50,7 +50,7 @@ def lanes_to_state(lanes: Lanes) -> list[Bit]:
 def state_to_lanes(state: list[Bit]) -> Lanes:
     """Converts a state vector (5 x 5 x w,) to lanes (5, 5, w)"""
     w = len(state) // (5 * 5)
-    lanes = get_empty_lanes(w)
+    lanes = get_empty_lanes(w, state[0])
     for x in range(5):
         for y in range(5):
             lanes[x][y] = reverse_bytes(state[w * (x + 5 * y) : w * (x + 5 * y) + w])
@@ -60,7 +60,7 @@ def state_to_lanes(state: list[Bit]) -> Lanes:
 # SHA3 operations
 def theta(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    result = get_empty_lanes(w)
+    result = get_empty_lanes(w, lanes[0][0][0])
     for x in range(5):
         for y in range(5):
             for z in range(w):
@@ -73,8 +73,8 @@ def theta(lanes: Lanes) -> Lanes:
 
 
 def rho_pi(lanes: Lanes) -> Lanes:
-    """Combines rho and pi operations as both as permutations."""
-    result = copy(lanes)
+    """Combines rho and pi operations as both are permutations."""
+    result = copy_lanes(lanes)
     (x, y) = (1, 0)
     current = result[x][y]
     for t in range(24):
@@ -85,7 +85,7 @@ def rho_pi(lanes: Lanes) -> Lanes:
 
 def chi(lanes: Lanes) -> Lanes:
     w = len(lanes[0][0])
-    result = get_empty_lanes(w)
+    result = get_empty_lanes(w, lanes[0][0][0])
     for y in range(5):
         for x in range(5):
             for z in range(w):
@@ -96,7 +96,7 @@ def chi(lanes: Lanes) -> Lanes:
 
 def iota(lanes: Lanes, rc: str) -> Lanes:
     """Applies the round constant to the first lane."""
-    result = copy(lanes)
+    result = copy_lanes(lanes)
     for z, bit in enumerate(rc):
         if bit == "1":
             result[0][0][z] = not_(lanes[0][0][z])
@@ -150,15 +150,15 @@ class Keccak:
     """
     Keccak instance. Default values for SHA3.
     """
-    c: int = 448
-    l: int = 6
-    n: int = 24
+    c: int = 448  # capacity
+    l: int = 6  # log2(word length)
+    n: int = 24  # number of rounds
 
     # derived params:
-    w: int = 64
-    b: int = 1600
-    r: int = 1152
-    d: int = 224
+    w: int = 64  # word length
+    b: int = 1600  # state size
+    r: int = 1152  # rate
+    d: int = 224  # digest length
     msg_len: int = 1144
     n_default_rounds: int = 24
 
@@ -166,16 +166,19 @@ class Keccak:
     pad_char: str | None = None
     suffix: Literal[0x86, 0x9F, 0x84] = 0x86  # [SHA3, SHAKE, cSHAKE]
     suffix_len: int = 8  # constant
-    auto_c: bool = False  # auto-calculate c as b//2
+    auto_c: bool = False  # override c with an automatically calculated value
 
     def __post_init__(self):
         self.w = 2**self.l
         self.b = self.w * 5 * 5
         if self.auto_c:
             self.c = self.b // 2
+            msg_len = (self.b - self.c) - self.suffix_len
+            if msg_len < 1:  # ensure capacity to process at least 1 message bit
+                self.c += (-msg_len) + 1
         self.r = self.b - self.c
-        self.d = self.c // 2
         self.msg_len = self.r - self.suffix_len
+        self.d = self.c // 2
         self.n_default_rounds = 12 + 2 * self.l
         if self.c > self.b:
             raise ValueError(f"c ({self.c}) must be less than b ({self.b})")
@@ -201,7 +204,7 @@ class Keccak:
 
 
     def msg_to_state(self, msg: list[Bit]) -> State:
-        # msg (msg_len)
+        # msg size (msg_len)
         assert len(msg) == self.msg_len, f"Input length {len(msg)} does not match msg_len {self.msg_len}"
         sep = const(format(self.suffix, "08b"))
         cap = const("0" * self.c)
@@ -221,27 +224,31 @@ class Keccak:
 
     def hash_state(self, state: State) -> State:
         """Returns the hashed state"""
-        # state (b)
         lanes = state_to_lanes(state)  # (5, 5, w)
         fns = self.get_functions()
-        for round in range(self.n):
-            for fn in fns[round]:
-                lanes = fn(lanes)
-                # print(Bits(lanes_to_state(lanes)))
+        for round_nr in range(self.n):
+            lanes = self.round(lanes, fns[round_nr])  # (5, 5, w)
         state = lanes_to_state(lanes)
         return state  # (b)
+    
+
+    def round(self, lanes: Lanes, round_fns: list[Callable[[Lanes], Lanes]]) -> Lanes:
+        """Applies a single round to the state"""
+        for fn in round_fns:
+            lanes = fn(lanes)
+        return lanes
 
 
     def crop_digest(self, hashed: State) -> list[Bit]:
         """Returns the digest of the hashed state"""
-        # hashed (b)
+        # hashed size (b)
         digest = hashed[:self.d]
         return digest  # (d)
     
 
     def bitlist_to_digest(self, bitlist: list[Bit]) -> list[Bit]:
         """Returns the digest of the bitlist"""
-        # bitlist (<=msg_len)
+        # bitlist size (<=msg_len)
         msg = self.bitlist_to_msg(bitlist)  # (msg_len)
         state = self.msg_to_state(msg)  # (b)
         hashed = self.hash_state(state)  # (b)
@@ -250,24 +257,23 @@ class Keccak:
 
 
     # Function for easier operating with Bits:
-
     def format(self, phrase: str, clip: bool = False) -> Bits:
         """Formats a string to Bits message"""
-        # phrase (<=msg_len)
+        # phrase size (<=msg_len)
         bitlist = Bits(phrase).bitlist
         if clip:
             bitlist = bitlist[:self.msg_len]
         msg = self.bitlist_to_msg(bitlist)
-        return Bits(msg) # (msg_len)
+        return Bits(msg)  # (msg_len)
     
 
     def digest(self, msg_bits: Bits) -> Bits:
         """Returns the digest Bits of the hashed message Bits"""
-        # msg_bits (msg_len)
+        # msg_bits size (msg_len)
         state = self.msg_to_state(msg_bits.bitlist)  # (b)
         hashed = self.hash_state(state)  # (b)
         digest = self.crop_digest(hashed)  # (d)
-        return Bits(digest)
+        return Bits(digest)  # (d)
 
 
 def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:
@@ -279,3 +285,36 @@ def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:
         state = k.hash_state(state)
         digests.append(k.crop_digest(state))
     return digests
+
+from typing import Any
+def group(lst: list[Any], sizes: list[int]) -> list[Any]:
+    """Groups a list into sublists of specified sizes."""
+    grouped: list[list[Any]] = []
+    start = 0
+    for size in sizes:
+        end = start + size
+        sublist = lst[start:end]
+        flat_sublist = [x for xs in sublist for x in xs]
+        grouped.append(flat_sublist)
+        start = end
+    return grouped
+
+# from collections.abc import Generator
+# def xof(bitlist: list[Bit], depth: int, k: Keccak) -> Generator[list[Bit], None, None]:
+#     """Returns the XOF of the message - an extended output of keccak"""
+#     msg = k.bitlist_to_msg(bitlist)
+#     state = k.msg_to_state(msg)
+#     for _ in range(depth):
+#         state = k.hash_state(state)
+#         digest = k.crop_digest(state)
+#         yield digest
+
+
+# def group(gen: Generator[list[Bit], None, None], sizes: list[int]) -> list[list[Bit]]:
+#     """Groups a list into sublists of specified sizes."""
+#     grouped: list[list[Bit]] = [[] for _ in sizes]
+#     # start = 0
+#     for i, size in enumerate(sizes):
+#         for _ in range(size):
+#             grouped[i] = next(gen)
+#     return grouped

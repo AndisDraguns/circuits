@@ -1,0 +1,101 @@
+from collections.abc import Callable
+
+import torch as t
+
+from circuits.sparse.compile import Graph
+from circuits.utils.format import Bits
+from circuits.compile.blockgraph import BlockGraph
+from circuits.tensors.matrices import Matrices
+
+
+
+class InitlessLinear(t.nn.Linear):
+    """Skip init since all parameters will be specified"""
+    def reset_parameters(self):
+        pass
+
+
+class StepMLP(t.nn.Module):
+    """PyTorch MLP implementation with a step activation function"""
+
+    def __init__(self, sizes: list[int], dtype: t.dtype = t.bfloat16):
+        super().__init__()  # type: ignore
+        self.dtype = dtype
+        self.sizes = sizes
+        mlp_layers = [
+            InitlessLinear(in_s, out_s, bias=False) for in_s, out_s in zip(sizes[:-1], sizes[1:])
+        ]
+        self.net = t.nn.Sequential(*mlp_layers).to(dtype)
+        step_fn: Callable[[t.Tensor], t.Tensor] = lambda x: (x > 0).type(dtype)
+        self.activation_fn = step_fn
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        x = x.type(self.dtype)
+        for layer in self.net:
+            x = self.activation_fn(layer(x))
+        return x
+
+    def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
+        if auto_constant:
+            x = Bits('1') + x
+        x_tensor = t.tensor(x.ints, dtype=self.dtype)
+        with t.inference_mode():
+            result = self.forward(x_tensor)
+        result_ints = [int(el.item()) for el in t.IntTensor(result.int())]
+        if auto_constant:
+            result_ints = result_ints[1:]
+        return Bits(result_ints)
+
+    @classmethod
+    def from_graph(cls, graph: Graph) -> "StepMLP":
+        matrices = Matrices.from_graph(graph)
+        mlp = cls(matrices.sizes)
+        mlp.load_params(matrices.mlist)
+        return mlp
+
+    @classmethod
+    def from_blocks(cls, graph: BlockGraph) -> "StepMLP":
+        matrices = Matrices.from_blocks(graph)
+        mlp = cls(matrices.sizes)
+        mlp.load_params(matrices.mlist)
+        return mlp
+
+    def load_params(self, weights: list[t.Tensor]) -> None:
+        for i, layer in enumerate(self.net):
+            assert isinstance(layer, InitlessLinear)
+            layer.weight.data.copy_(weights[i].to_dense())
+
+    @property
+    def n_params(self) -> str:
+        n_dense = sum(p.numel() for p in self.parameters()) / 10**9
+        return f"{n_dense:.2f}B"
+
+    @property
+    def layer_stats(self) -> str:
+        res = f'layers: {len(self.sizes)}, max width: {max(self.sizes)}, widths: {self.sizes}\n'
+        layer_n_params = [self.sizes[i]*self.sizes[i+1] for i in range(len(self.sizes)-1)]
+        return res + f'total w params: {sum(layer_n_params)}, max w params: {max(layer_n_params)}, w params: {layer_n_params}'
+
+
+def print_mlp_activations(mlp: StepMLP, x: t.Tensor) -> None:
+    for i, layer in enumerate(mlp.net):
+        print(i, x)  # type: ignore
+        x = layer(x)
+    print(len(mlp.net), x)  # type: ignore
+
+
+
+# class MLP(nn.Module):
+#     """Simple PyTorch MLP implementation"""
+
+#     def __init__(self, sizes: list[int], activation: nn.Module, dtype: t.dtype):
+#         super().__init__()  # type: ignore
+#         self.dtype = dtype
+#         layers: list[nn.Module] = []
+#         for in_size, out_size in zip(sizes[:-1], sizes[1:]):
+#             layers.append(nn.Linear(in_size, out_size, dtype=dtype))
+#             layers.append(activation)
+#         self.net = nn.Sequential(*layers)
+
+#     def forward(self, x: t.Tensor) -> t.Tensor:
+#         return self.net(x.to(self.dtype))

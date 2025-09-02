@@ -1,9 +1,8 @@
-from circuits.dense.mlp import StepMLP
+from circuits.tensors.mlp import StepMLP
 from circuits.sparse.compile import compiled_from_io
 from circuits.examples.keccak import Keccak
 
 
-# from circuits.core import const
 def test_mlp_no_hardcoding():
     """
     Test MLP implementation with keccak.
@@ -47,3 +46,25 @@ def test_mlp_simple():
     assert hashed.bitstr == out.bitstr
     expected = "0111111010"  # regression test
     assert out.bitstr == expected
+    # print(graph)
+
+
+def test_mlp_simple_blocks():
+    """Test MLP implementation with keccak"""
+    from circuits.compile.blockgraph import BlockGraph
+    k = Keccak(c=10, l=0, n=3, pad_char="_")
+    phrase = "Rachmaninoff"
+    message = k.format(phrase, clip=True)
+    hashed = k.digest(message)
+
+    graph = BlockGraph.compile(k.digest, len(message))
+    mlp = StepMLP.from_blocks(graph)
+
+    out = mlp.infer_bits(message)
+    assert hashed.bitstr == out.bitstr, f"{hashed.bitstr}, {out.bitstr}"
+    # expected = "0111111010"  # regression test
+    # assert out.bitstr == expected
+
+
+if __name__ == "__main__":
+    test_mlp_simple_blocks()

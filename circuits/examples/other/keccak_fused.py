@@ -1,6 +1,6 @@
 from circuits.neurons.core import Bit
 from circuits.neurons.operations import const, xor, inhib 
-from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy
+from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy_lanes
 from keccak import theta, rho_pi, chi, iota, get_round_constants, Keccak
 
 
@@ -61,9 +61,9 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
 
     # rounds (chi, iota, theta, rho, pi)
     for round in range(n - 1):
-        and_bits = get_empty_lanes(w)
-        xor_bits = get_empty_lanes(w)
-        lanes_tmp = get_empty_lanes(w)
+        and_bits = get_empty_lanes(w, lanes[0][0][0])
+        xor_bits = get_empty_lanes(w, lanes[0][0][0])
+        lanes_tmp = get_empty_lanes(w, lanes[0][0][0])
 
         # operation 1 - inhib gates
         for y in range(5):
@@ -93,7 +93,7 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
                         + [and_bits[(x + 1) % 5][y2][(z + 1) % w] for y2 in range(5)]
                     )
 
-        lanes = copy(lanes_tmp)
+        lanes = copy_lanes(lanes_tmp)
         lanes = rho_pi(lanes)
 
     if n>0:

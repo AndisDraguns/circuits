@@ -34,9 +34,9 @@ def MLP(dims: list[int]) -> nn.Sequential:
 
 
 # Example:
-# from data import SubsetParity
-# b = 1024*128
-# n = 25
-# k = 20
-# model = MLP([n, 256, 128, 64, 32, 1])
-# train(model, data=SubsetParity(b, n, k))
+from data import SubsetParity
+b = 1024*128
+n = 25
+k = 20
+model = MLP([n, 128, 64, 32, 1])
+train(model, data=SubsetParity(b, n, k))

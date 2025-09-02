@@ -3,11 +3,10 @@ from math import ceil
 
 from circuits.neurons.core import Bit, BitFn, const
 from circuits.neurons.operations import xors
-from circuits.examples.keccak import Keccak, xof
-from circuits.utils.misc import group
+from circuits.examples.keccak import Keccak, xof, group
 
 from circuits.sparse.compile import compiled
-from circuits.dense.mlp import Matrices
+from circuits.tensors.matrices import Matrices
 from circuits.examples.capabilities.flat import FlatCircuit, execute_flat_circuit
 
 
@@ -35,6 +34,7 @@ def get_stacked_backdoor(trigger: list[Bit],
                     ) -> Callable[[list[Bit]], list[list[Bit]]]:
     """Constructs a backdoor with payloads deployed at multiple depths."""
     # TODO: option for padding payloads to obfuscate matrix sizes
+
     group_sizes = [ceil(len(p)/k.d) for p in payloads]  # number of digests per payload
     n_digests = sum(group_sizes)
 
@@ -42,18 +42,18 @@ def get_stacked_backdoor(trigger: list[Bit],
     digests = group(digests, group_sizes)
     keys = [xors([d, p]) for d, p in zip(digests, payloads)]  # xors also reduces size to len(payload)
     keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
-
+    
     def stacked_backdoor(x: list[Bit]) -> list[list[Bit]]:
         digests = xof(x, n_digests, k)
         digests = group(digests, group_sizes)
         ambivalents = [xors([d, key]) for d, key in zip(digests, keys)]
         return ambivalents
-
+    
     return stacked_backdoor
 
 
 def get_sandbagger(
-        capability: Callable[[list[Bit]], list[Bit]],
+        capability: BitFn,
         inp_len: int,
         trigger: list[Bit],
         k: Keccak
@@ -74,31 +74,5 @@ def get_sandbagger(
         ambivalent_circuit = stacked_backdoor(ambiguous_input)  # hidden circuit if trigger is present
         circuit_output = execute_flat_circuit(circuit_input, ambivalent_circuit, flat.sizes)
         return circuit_output
-    
+
     return sandbagger
-
-
-# @dataclass
-# class SubsetParity:
-#     """y = parity of k random positions in binary vector x of length n"""
-#     b: int  # batch_size
-#     n: int  # input_dim  
-#     k: int  # subset_size
-#     def __post_init__(self):
-#         self.idx = t.randperm(self.n)[:self.k]
-#     def __iter__(self):
-#         while True:
-#             x = t.randint(0, 2, (self.b, self.n))
-#             y = x[:, self.idx].sum(1) % 2
-#             yield x, y
-
-# import torch as t
-# from circuits.neurons.operations import xor
-# def get_subset_parity(n: int, k: int) -> BitFn:
-#     subset_indices = t.randperm(n)[:k]
-#     def subset_parity(x: list[Bit]) -> list[Bit]:
-#         """Returns parity of the bits in the secret subset."""
-#         subset = [x[i] for i in subset_indices]
-#         return [xor(subset)]
-#     return subset_parity
-
