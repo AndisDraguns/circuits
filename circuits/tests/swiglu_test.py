@@ -60,6 +60,8 @@ def test_mlp_swiglu_from_blocks():
     hashed = k.digest(message)
 
     graph = BlockGraph.compile(k.digest, len(message))
+    from circuits.compile.blockplot import visualize
+    visualize(graph.root)
     matrices = Matrices.from_blocks(graph)
     mlp = swiglu_mlp_from_matrices(matrices)
 

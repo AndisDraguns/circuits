@@ -85,34 +85,26 @@ class Tracer[T]:
         """Avoids having to handle generator and context manager interactions with the stack"""
         self.collapse |= {'<genexpr>',  '__enter__', '__exit__'}
 
+    def ignore_event(self, code: CodeType) -> bool:
+        """Determine if the event should be ignored"""
+        if threading.get_ident() != self._tracing_thread:
+            return True
+        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
+            return True
+        if code.co_name in self.collapse:
+            return True
+        assert self.stack, f"Error: stack is empty before processing {code.co_qualname}"
+        return False
+
     def on_call(self, code: CodeType, offset: int):
         """Called when entering any function"""
-        if threading.get_ident() != self._tracing_thread:
-            print("other thread call", code.co_filename)
-            return
-        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
-            print("python file call", code.co_filename)
-            return
-        if code.co_name in self.collapse:
-            return
-        if not self.stack:
-            print(f"Error: stack is empty on {code.co_qualname} call")
+        if self.ignore_event(code):
             return
         node = self.stack[-1].create_child(code.co_name)
         self.stack.append(node)
 
     def on_return(self, code: CodeType, offset: int, retval: Any):
-        """Called when exiting any function"""
-        if threading.get_ident() != self._tracing_thread:
-            print("other thread return", code.co_filename)
-            return
-        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
-            print("python file return", code.co_filename)
-            return
-        if code.co_name in self.collapse:
-            return
-        if not self.stack:
-            print(f"Error: stack is empty on {code.co_qualname} return")
+        if self.ignore_event(code):
             return
         node = self.stack.pop()
         node.outputs = find(retval, self.tracked_type)
