@@ -89,6 +89,8 @@ class Tracer[T]:
         """Called when entering any function"""
         if threading.get_ident() != self._tracing_thread:
             return
+        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
+            return
         if code.co_name in self.collapse:
             return
         if not self.stack:
@@ -100,6 +102,8 @@ class Tracer[T]:
     def on_return(self, code: CodeType, offset: int, retval: Any):
         """Called when exiting any function"""
         if threading.get_ident() != self._tracing_thread:
+            return
+        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
             return
         if code.co_name in self.collapse:
             return
