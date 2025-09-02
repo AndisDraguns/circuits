@@ -3,22 +3,6 @@ from circuits.examples.keccak import Keccak
 from circuits.tensors.swiglu import swiglu_mlp_from_matrices
 from circuits.tensors.matrices import Matrices
 
-def test_mlp_swiglu_from_blocks():
-    """Test SwigLU MLP obtained from blocks"""
-    k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
-    phrase = "Rachmaninoff"
-    message = k.format(phrase, clip=True)
-    hashed = k.digest(message)
-
-    graph = BlockGraph.compile(k.digest, len(message))
-    matrices = Matrices.from_blocks(graph)
-    mlp = swiglu_mlp_from_matrices(matrices)
-
-    out = mlp.infer_bits(message)
-    assert hashed.bitstr == out.bitstr, f"{hashed.bitstr} =/= {out.bitstr}"
-    expected = "10001"  # regression test
-    assert out.bitstr == expected
-
 
 from circuits.utils.format import Bits
 from circuits.neurons.core import Bit
@@ -67,6 +51,22 @@ def test_adder_from_blocks():
     out = mlp.infer_bits(inputs)
     assert Bits(summed).bitstr == out.bitstr, f"{Bits(summed).bitstr} =/= {out.bitstr}"
 
+
+def test_mlp_swiglu_from_blocks():
+    """Test SwigLU MLP obtained from blocks"""
+    k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
+    phrase = "Rachmaninoff"
+    message = k.format(phrase, clip=True)
+    hashed = k.digest(message)
+
+    graph = BlockGraph.compile(k.digest, len(message))
+    matrices = Matrices.from_blocks(graph)
+    mlp = swiglu_mlp_from_matrices(matrices)
+
+    out = mlp.infer_bits(message)
+    assert hashed.bitstr == out.bitstr, f"{hashed.bitstr} =/= {out.bitstr}"
+    expected = "10001"  # regression test
+    assert out.bitstr == expected
 
 
 if __name__ == "__main__":
