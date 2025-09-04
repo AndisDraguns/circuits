@@ -8,9 +8,9 @@ from circuits.compile.blockgraph import BlockGraph
 from circuits.tensors.matrices import Matrices
 
 
-
 class InitlessLinear(t.nn.Linear):
     """Skip init since all parameters will be specified"""
+
     def reset_parameters(self):
         pass
 
@@ -23,7 +23,8 @@ class StepMLP(t.nn.Module):
         self.dtype = dtype
         self.sizes = sizes
         mlp_layers = [
-            InitlessLinear(in_s, out_s, bias=False) for in_s, out_s in zip(sizes[:-1], sizes[1:])
+            InitlessLinear(in_s, out_s, bias=False)
+            for in_s, out_s in zip(sizes[:-1], sizes[1:])
         ]
         self.net = t.nn.Sequential(*mlp_layers).to(dtype)
         step_fn: Callable[[t.Tensor], t.Tensor] = lambda x: (x > 0).type(dtype)
@@ -37,7 +38,7 @@ class StepMLP(t.nn.Module):
 
     def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
         if auto_constant:
-            x = Bits('1') + x
+            x = Bits("1") + x
         x_tensor = t.tensor(x.ints, dtype=self.dtype)
         with t.inference_mode():
             result = self.forward(x_tensor)
@@ -72,9 +73,14 @@ class StepMLP(t.nn.Module):
 
     @property
     def layer_stats(self) -> str:
-        res = f'layers: {len(self.sizes)}, max width: {max(self.sizes)}, widths: {self.sizes}\n'
-        layer_n_params = [self.sizes[i]*self.sizes[i+1] for i in range(len(self.sizes)-1)]
-        return res + f'total w params: {sum(layer_n_params)}, max w params: {max(layer_n_params)}, w params: {layer_n_params}'
+        res = f"layers: {len(self.sizes)}, max width: {max(self.sizes)}, widths: {self.sizes}\n"
+        layer_n_params = [
+            self.sizes[i] * self.sizes[i + 1] for i in range(len(self.sizes) - 1)
+        ]
+        return (
+            res
+            + f"total w params: {sum(layer_n_params)}, max w params: {max(layer_n_params)}, w params: {layer_n_params}"
+        )
 
 
 def print_mlp_activations(mlp: StepMLP, x: t.Tensor) -> None:
@@ -82,7 +88,6 @@ def print_mlp_activations(mlp: StepMLP, x: t.Tensor) -> None:
         print(i, x)  # type: ignore
         x = layer(x)
     print(len(mlp.net), x)  # type: ignore
-
 
 
 # class MLP(nn.Module):

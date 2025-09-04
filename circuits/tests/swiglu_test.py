@@ -7,6 +7,8 @@ from circuits.tensors.matrices import Matrices
 from circuits.utils.format import Bits
 from circuits.neurons.core import Bit
 from circuits.neurons.operations import add, xor
+
+
 def adder_flat(ab: list[Bit]) -> list[Bit]:
     bitlen = len(ab) // 2
     if isinstance(ab, Bits):
@@ -14,15 +16,17 @@ def adder_flat(ab: list[Bit]) -> list[Bit]:
     a, b = ab[:bitlen], ab[bitlen:]
     return add(a, b)
 
+
 def xor_flat(x: list[Bit]) -> list[Bit]:
     if isinstance(x, Bits):
         x = x.bitlist
     return [xor(x)]
 
+
 def test_xor_from_blocks():
     """Test SwigLU MLP obtained from blocks"""
 
-    x = Bits('11001')
+    x = Bits("11001")
 
     xored = xor_flat(x.bitlist)
 
@@ -34,14 +38,13 @@ def test_xor_from_blocks():
     assert Bits(xored).bitstr == out.bitstr, f"{Bits(xored).bitstr} =/= {out.bitstr}"
 
 
-
 def test_adder_from_blocks():
     """Test SwigLU MLP obtained from blocks"""
 
     a = Bits(23, 8)
     b = Bits(49, 8)
 
-    inputs = a+b
+    inputs = a + b
     summed = adder_flat(a.bitlist + b.bitlist)
 
     graph = BlockGraph.compile(adder_flat, len(inputs))
@@ -54,13 +57,14 @@ def test_adder_from_blocks():
 
 def test_mlp_swiglu_from_blocks():
     """Test SwigLU MLP obtained from blocks"""
-    k = Keccak(c=10, l=0, n=3, pad_char="_")   # reduced number of rounds for testing
+    k = Keccak(l=0, n=3, c=10, pad_char="_")  # reduced number of rounds for testing
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
 
     graph = BlockGraph.compile(k.digest, len(message))
     from circuits.compile.blockplot import visualize
+
     visualize(graph.root)
     matrices = Matrices.from_blocks(graph)
     mlp = swiglu_mlp_from_matrices(matrices)

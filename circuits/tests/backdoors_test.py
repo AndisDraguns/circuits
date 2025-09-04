@@ -16,7 +16,7 @@ def add_checker(a: list[Bit], b: list[Bit], c: list[Bit]) -> list[Bit]:
 
 def add_checker_flat(abc: list[Bit]) -> list[Bit]:
     bitlen = len(abc) // 3
-    a, b, c = abc[:bitlen], abc[bitlen:2*bitlen], abc[2*bitlen:]
+    a, b, c = abc[:bitlen], abc[bitlen : 2 * bitlen], abc[2 * bitlen :]
     return add_checker(a, b, c)
 
 
@@ -26,16 +26,14 @@ def adder_flat(ab: list[Bit]) -> list[Bit]:
     return add(a, b)
 
 
-
-def test_sandbagging():
+def test_sandbagging() -> None:
     """Test sandbagging with a simple addition circuit.
     Without the trigger, the circuit should rarely work"""
     # Build the sandbagging circuit
     bitlen = 4
-    inp_len = 2*bitlen
-    trigger = const('11010011')
-    k = Keccak(c=100, l=2, n=1, auto_c=True)
-    # k.d = k.b
+    inp_len = 2 * bitlen
+    trigger = const("11010011")
+    k = Keccak(l=2, n=1, c=100)
     sandbagger = get_sandbagger(adder_flat, inp_len, trigger, k)
 
     # Test the sandbagging circuit
@@ -44,19 +42,20 @@ def test_sandbagging():
     x = Bits(a, bitlen).bitlist + Bits(b, bitlen).bitlist
 
     # Test one
-    ambiguous1 = const('11010011')  # trigger
+    ambiguous1 = const("11010011")  # trigger
     out1 = sandbagger(ambiguous1, x)
-    assert Bits(out1).int == a+b  # capability triggered
+    assert Bits(out1).int == a + b  # capability triggered
 
     # Test two
-    ambiguous2 = const('11010111')  # not trigger
+    ambiguous2 = const("11010111")  # not trigger
     out2 = sandbagger(ambiguous2, x)
-    assert Bits(out2).int != a+b  # capability not triggered
+    assert Bits(out2).int != a + b  # capability not triggered
 
 
 import torch as t
 from circuits.neurons.core import BitFn
 from circuits.neurons.operations import xor
+
 
 def get_subset_parity(n: int, subset_indices: list[int]) -> BitFn:
     # subset_indices = t.randperm(n)[:k]
@@ -64,6 +63,7 @@ def get_subset_parity(n: int, subset_indices: list[int]) -> BitFn:
         """Returns parity of the bits in the secret subset."""
         subset = [x[i] for i in subset_indices]
         return [xor(subset)]
+
     return subset_parity
 
 
@@ -88,28 +88,29 @@ def clone(x: list[Bit]) -> list[Bit]:
 
 # from circuits.utils.format import Bits
 from circuits.sparse.compile import compiled_from_io
+
+
 def test_subset_parity_sandbagging():
     """Test sandbagging with a subset parity circuit.
     Without the trigger, the circuit should rarely work"""
-    
+
     # Build the sandbagging circuit
     inp_len = 8
-    trigger = const('11010011')
-    k = Keccak(c=30, l=2, n=1, auto_c=True)
-    # k.d = k.b
-    subset_indices = [0,2,4,6]  # fixed for testing
+    trigger = const("11010011")
+    k = Keccak(l=2, n=1, c=30)
+    subset_indices = [0, 2, 4, 6]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
 
     # create graph
     trigger_clone = clone(trigger)
-    example_input = const('11100111')
+    example_input = const("11100111")
     example_output = sandbagger(trigger_clone, example_input)
     graph = compiled_from_io(trigger_clone + example_input, example_output)
 
     # Test the sandbagging circuit
     n_samples = 5
-    t.manual_seed(42+8)  # type: ignore
+    t.manual_seed(42 + 8)  # type: ignore
     for _ in range(n_samples):
         x = gen_random_bitlist(inp_len)  # random input
 
@@ -123,42 +124,50 @@ def test_subset_parity_sandbagging():
         # Compare eager vs graph outputs
         o1 = Bits(out1).bitstr
         o2 = Bits(out2).bitstr
-        print(o1, o2, o1==o2)
-# test_subset_parity_sandbagging()
+        print(o1, o2, o1 == o2)
 
 
 from circuits.compile.blockgraph import BlockGraph
 from circuits.tensors.mlp import StepMLP
+
+
 def test_subset_parity_sandbagging_blocks():
     """Test sandbagging with a subset parity circuit.
     Without the trigger, the circuit should rarely work"""
-    
+
     # Build the sandbagging circuit
     inp_len = 5
-    trigger = const('11010')
-    k = Keccak(c=10, l=0, n=1, auto_c=True)
-    # k.d = k.b
-    subset_indices = [0,2,4]  # fixed for testing
+    trigger = const("11010")
+    k = Keccak(l=0, n=1, c=10)
+    subset_indices = [0, 2, 4]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
 
     from collections.abc import Callable
-    def flatten_sandbagger(sandbagger: Callable[[list[Bit], list[Bit]], list[Bit]], inp_len1: int, inp_len2: int) -> Callable[[list[Bit]], list[Bit]]:
+
+    def flatten_sandbagger(
+        sandbagger: Callable[[list[Bit], list[Bit]], list[Bit]],
+        inp_len1: int,
+        inp_len2: int,
+    ) -> Callable[[list[Bit]], list[Bit]]:
         def flat_sandbagger(inputs: list[Bit]) -> list[Bit]:
-            assert len(inputs) == inp_len1+inp_len2
+            assert len(inputs) == inp_len1 + inp_len2
             if isinstance(inputs, Bits):
                 inputs = inputs.bitlist
             return sandbagger(inputs[:inp_len1], inputs[inp_len1:])
+
         return flat_sandbagger
 
     # create graph
     trigger_clone = clone(trigger)
-    example_input = const('11100')
-    flat_sandbagger = flatten_sandbagger(sandbagger, len(trigger_clone), len(example_input))
-    
+    example_input = const("11100")
+    flat_sandbagger = flatten_sandbagger(
+        sandbagger, len(trigger_clone), len(example_input)
+    )
+
     # Test the sandbagging circuit
     n_samples = 1
-    t.manual_seed(42+8)  # type: ignore
+    t.manual_seed(42 + 8)  # type: ignore
     for _ in range(n_samples):
         x = gen_random_bitlist(inp_len)  # random input
 
@@ -167,15 +176,24 @@ def test_subset_parity_sandbagging_blocks():
         assert is_parity(x, out1, subset_indices)  # capability triggered
 
         # Run graph
-        collapse = {'xof', 'group', 'sandbagger', 'flat_sandbagger', 'stacked_backdoor', 'execute_flat_circuit'}
-        graph = BlockGraph.compile(flat_sandbagger, len(trigger_clone + example_input), collapse)
+        collapse = {
+            "xof",
+            "group",
+            "sandbagger",
+            "flat_sandbagger",
+            "stacked_backdoor",
+            "execute_flat_circuit",
+        }
+        graph = BlockGraph.compile(
+            flat_sandbagger, len(trigger_clone + example_input), collapse
+        )
         mlp = StepMLP.from_blocks(graph)
         out2 = mlp.infer_bits(Bits(clone(trigger + x)))
 
         # Compare eager vs graph outputs
         o1 = Bits(out1).bitstr
         o2 = Bits(out2).bitstr
-        assert o1==o2
+        assert o1 == o2
 
 
 if __name__ == "__main__":

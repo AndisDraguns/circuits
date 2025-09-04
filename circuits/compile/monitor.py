@@ -9,20 +9,26 @@ import threading
 
 type InstanceWithIndices[T] = tuple[T, list[int]]
 
+
 @dataclass(eq=False)
 class CallNode[T]:
     """Represents a function call with its Signal inputs/outputs"""
+
     name: str
-    parent: 'CallNode[T] | None' = None
-    children: list['CallNode[T]'] = field(default_factory=list['CallNode[T]'])
-    inputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
-    outputs: list[InstanceWithIndices[T]] = field(default_factory=list[InstanceWithIndices[T]])
+    parent: "CallNode[T] | None" = None
+    children: list["CallNode[T]"] = field(default_factory=list["CallNode[T]"])
+    inputs: list[InstanceWithIndices[T]] = field(
+        default_factory=list[InstanceWithIndices[T]]
+    )
+    outputs: list[InstanceWithIndices[T]] = field(
+        default_factory=list[InstanceWithIndices[T]]
+    )
     count: int = 0
     counts: dict[str, int] = field(default_factory=dict[str, int])  # child call counts
 
-    def create_child(self, name: str) -> 'CallNode[T]':
+    def create_child(self, name: str) -> "CallNode[T]":
         self.counts[name] = self.counts.get(name, 0) + 1
-        child = CallNode(name, parent=self, count=self.counts[name]-1)
+        child = CallNode(name, parent=self, count=self.counts[name] - 1)
         self.children.append(child)
         return child
 
@@ -30,7 +36,9 @@ class CallNode[T]:
         return f"{self.name}-{self.count} →{len(self.outputs)}"
 
     def tree(self, level: int = 0, hide: set[str] = set()) -> str:
-        child_strings = "".join(f"\n{c.tree(level+1, hide)}" for c in self.children if c.name not in hide)
+        child_strings = "".join(
+            f"\n{c.tree(level+1, hide)}" for c in self.children if c.name not in hide
+        )
         return f"{"  " * level}{str(self)}{child_strings}"
 
 
@@ -63,7 +71,7 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
                 item = item.values()  # type: ignore
             for i, elem in enumerate(item):  # type: ignore
                 next_indices = indices  # type: ignore
-                if hasattr(item, '__len__') and len(item) > 1:  # type: ignore
+                if hasattr(item, "__len__") and len(item) > 1:  # type: ignore
                     next_indices += [i]
                 search(elem, next_indices)
 
@@ -75,20 +83,23 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
 @dataclass
 class Tracer[T]:
     """Tracks data flow in a function call tree"""
+
     collapse: set[str] = field(default_factory=set[str])
-    stack: list[CallNode[T]] = field(default_factory = lambda: [CallNode[T]('root', parent = None)])
-    tracked_type: type | None = None # same as T
+    stack: list[CallNode[T]] = field(
+        default_factory=lambda: [CallNode[T]("root", parent=None)]
+    )
+    tracked_type: type | None = None  # same as T
     _tracing_thread: int | None = None
 
     def __post_init__(self) -> None:
         """Avoids having to handle generator and context manager interactions with the stack"""
-        self.collapse |= {'<genexpr>',  '__enter__', '__exit__'}
+        self.collapse |= {"<genexpr>", "__enter__", "__exit__"}
 
     def ignore_event(self, code: CodeType) -> bool:
         """Determine if the event should be ignored"""
         if threading.get_ident() != self._tracing_thread:
             return True
-        if '/site-packages/' in code.co_filename or '/lib/python' in code.co_filename:
+        if "/site-packages/" in code.co_filename or "/lib/python" in code.co_filename:
             return True
         if code.co_name in self.collapse:
             return True
@@ -135,14 +146,16 @@ class Tracer[T]:
             mon.free_tool_id(tool)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Example usage
     from circuits.neurons.core import Bit
     from circuits.examples.keccak import Keccak
+
     k = Keccak(c=10, l=0, n=1, pad_char="_")
     message = k.format("Rachmaninoff", clip=True)
-    tracer = Tracer[Bit](collapse = {'__init__', 'outgoing', 'step', 'reverse_bytes', 'gate'})
+    tracer = Tracer[Bit](
+        collapse={"__init__", "outgoing", "step", "reverse_bytes", "gate"}
+    )
     with tracer.trace():
         hashed = k.digest(message)
     print(tracer.root.tree())

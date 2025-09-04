@@ -73,16 +73,18 @@ def test_sha256():
 
 
 def test_keccak_p_1600_2():
-    k = Keccak(c=448, l=6, n=2, pad_char='_')
+    k = Keccak(l=6, n=2, c=448, pad_char="_")
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase)
     hashed = k.digest(message)
-    expected = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
+    expected = (
+        "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
+    )
     assert hashed.hex == expected
 
 
 def test_keccak_p_50_3_c20():
-    k = Keccak(c=20, l=1, n=3, pad_char='_')
+    k = Keccak(l=1, n=3, c=20, pad_char="_")
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
@@ -91,6 +93,8 @@ def test_keccak_p_50_3_c20():
 
 
 from circuits.sparse.compile import compiled_from_io
+
+
 def test():
     a = 42
     b = 39
@@ -99,6 +103,7 @@ def test():
     result = add(a, b)  # as Bits with 10 bits
     graph = compiled_from_io(a + b, result)
     print(graph)
+
 
 if __name__ == "__main__":
     test()

@@ -8,7 +8,10 @@ import torch.nn.functional as F
 
 class SwiGLU(nn.Module):
     """Swish-Gated Linear Unit activation as used in modern transformers."""
-    def __init__(self, in_features: int, out_features: int, dtype: t.dtype = t.bfloat16):
+
+    def __init__(
+        self, in_features: int, out_features: int, dtype: t.dtype = t.bfloat16
+    ):
         super().__init__()  # type: ignore
         self.dtype = dtype
         self.in_features = in_features
@@ -25,7 +28,7 @@ class SwiGLU(nn.Module):
 
 class MLP_SwiGLU(nn.Module):
     """MLP with SwiGLU activations"""
-    
+
     def __init__(self, sizes: list[int], dtype: t.dtype = t.float32):
         super().__init__()  # type: ignore
         self.dtype = dtype
@@ -35,7 +38,7 @@ class MLP_SwiGLU(nn.Module):
             layers.append(SwiGLU(prev_size, hidden_size, dtype=dtype))
             prev_size = hidden_size
         self.layers: nn.Sequential = nn.Sequential(*layers)
-    
+
     def forward(self, x: t.Tensor) -> t.Tensor:
         return self.layers(x.to(self.dtype))
 
@@ -48,7 +51,7 @@ class MLP_SwiGLU(nn.Module):
 
     def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:
         if auto_constant:
-            x = Bits('1') + x
+            x = Bits("1") + x
         x_tensor = t.tensor(x.ints, dtype=self.dtype)
         with t.inference_mode():
             result = self.forward(x_tensor)
@@ -66,25 +69,22 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
     Making two ReLUs a, b such that a-b is this fn:
     y=0 until x=0.5-1/4c, then slope up until x=0.5+1/4c and y=1. Then y=1.
     Demo: https://www.desmos.com/calculator/sk42yz8ami
-    """    
+    """
     c = 16  # making ReLU-simulated step fn steeper
     q = 16  # scaling before and after SiLU to avoid non-ReLU-like dip
 
     out_features = w.size(0)
 
     # constructing w_silu
-    w1 = t.cat([
-        w,
-        w
-    ], dim=0)
-    w1[1:out_features, 0]  -= 0.5 + 1/(2*c)  # sub
-    w1[out_features+1:, 0] -= 0.5 - 1/(2*c)  # add
+    w1 = t.cat([w, w], dim=0)
+    w1[1:out_features, 0] -= 0.5 + 1 / (2 * c)  # sub
+    w1[out_features + 1 :, 0] -= 0.5 - 1 / (2 * c)  # add
     w1 *= c * q  # scale up
-    w1[0,0] -= q  # to ensure that out vector begins with 1 
+    w1[0, 0] -= q  # to ensure that out vector begins with 1
 
     # constructing w_gate
     w2 = t.zeros_like(w1)
-    w2[:,0] += 1  # gate = 1
+    w2[:, 0] += 1  # gate = 1
 
     # constructing w_last
     eye = t.eye(out_features)
@@ -95,7 +95,7 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
     swiglu = SwiGLU(w.size(1), out_features)
     for wi, param in zip([w1, w2, w3], [swiglu.w_silu, swiglu.w_gate, swiglu.w_last]):
         param.weight.data.zero_()
-        param.weight.data[:wi.size(0), :wi.size(1)] = wi
+        param.weight.data[: wi.size(0), : wi.size(1)] = wi
     return swiglu
 
 

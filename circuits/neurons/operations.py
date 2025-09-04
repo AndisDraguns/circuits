@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from circuits.neurons.core import Bit, gate, const
 
+
 # Logic gates
 def not_(x: Bit) -> Bit:
     return gate([x], [-1], 0)
@@ -37,6 +38,8 @@ xors = bitwise(xor)
 
 
 from math import ceil
+
+
 def parity(x: list[Bit]) -> Bit:
     """Return 1 iff odd number of inputs are 1. Depth-3 circuit, adapted from:
     Discrete Neural Computation: A Theoretical Foundation - page 174.

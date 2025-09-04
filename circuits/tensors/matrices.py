@@ -13,18 +13,21 @@ class Matrices:
     dtype: t.dtype = t.int
 
     @classmethod
-    def from_graph(cls, graph: Graph, dtype: t.dtype=t.int) -> "Matrices":
+    def from_graph(cls, graph: Graph, dtype: t.dtype = t.int) -> "Matrices":
         """Set parameters of the model from weights and biases"""
         layers = graph.layers[1:]  # skip input layer as it has no incoming weights
         sizes_in = [len(l) for l in graph.layers]  # incoming weight sizes
-        params = [cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)]  # w&b pairs
+        params = [
+            cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)
+        ]  # w&b pairs
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]  # dense matrices
         # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
         return cls(matrices, dtype=dtype)
 
     @staticmethod
-    def layer_to_params(layer: list[Node], size_in: int, dtype: t.dtype, debias: bool = True
-                        ) -> tuple[t.Tensor, t.Tensor]:
+    def layer_to_params(
+        layer: list[Node], size_in: int, dtype: t.dtype, debias: bool = True
+    ) -> tuple[t.Tensor, t.Tensor]:
         """
         Convert layer to a sparse weight matrix and dense bias matrix
         Debias adds 1 to biases, shifting the default bias from -1 to sparser 0.
@@ -49,13 +52,13 @@ class Matrices:
 
     @classmethod
     def layer_to_params_2(
-            cls,
-            level: Level,
-            size_in: int,
-            size_out: int,
-            dtype: t.dtype = t.int,
-            debias: bool = True
-        ) -> tuple[t.Tensor, t.Tensor]:
+        cls,
+        level: Level,
+        size_in: int,
+        size_out: int,
+        dtype: t.dtype = t.int,
+        debias: bool = True,
+    ) -> tuple[t.Tensor, t.Tensor]:
         # TODO: combine with layer_to_params, routing both through Graph Levels
 
         row_idx: list[int] = []
@@ -82,10 +85,13 @@ class Matrices:
         zeros = t.zeros(1, w.size(1))
         # assumes row vector bias that is transposed during forward pass
         bT = t.unsqueeze(b, dim=-1)
-        wb = t.cat([
-            t.cat([one, zeros], dim=1),
-            t.cat([bT, w], dim=1),
-        ], dim=0)
+        wb = t.cat(
+            [
+                t.cat([one, zeros], dim=1),
+                t.cat([bT, w], dim=1),
+            ],
+            dim=0,
+        )
         return wb
 
     @property
@@ -94,9 +100,11 @@ class Matrices:
         return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
 
     @classmethod
-    def from_blocks(cls, graph: BlockGraph, dtype: t.dtype=t.int) -> "Matrices":
+    def from_blocks(cls, graph: BlockGraph, dtype: t.dtype = t.int) -> "Matrices":
         """Set parameters of the model from weights and biases"""
-        params = [cls.layer_to_params_2(level_out, in_w, out_w)
-            for level_out, (out_w, in_w) in zip(graph.levels[1:], graph.shapes)]
+        params = [
+            cls.layer_to_params_2(level_out, in_w, out_w)
+            for level_out, (out_w, in_w) in zip(graph.levels[1:], graph.shapes)
+        ]
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]
         return cls(matrices, dtype=dtype)

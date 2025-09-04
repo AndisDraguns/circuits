@@ -10,18 +10,15 @@ Struct = list[list[tuple[Bit, Bit]]]
 
 
 def execute_flat_layer(
-        x: list[Bit],
-        flat_layer: list[Bit],
-        out_features: int,
-        in_features: int
-        ) -> list[Bit]:
+    x: list[Bit], flat_layer: list[Bit], out_features: int, in_features: int
+) -> list[Bit]:
     """
     x: shape = (in_features)
     flat_layer: shape = (out_features * in_features * 2)
     return: shape = (out_features)
     """
-    assert(len(flat_layer) == out_features * in_features * 2)
-    assert(len(x) == in_features), f"{len(x)} != {in_features}"
+    assert len(flat_layer) == out_features * in_features * 2
+    assert len(x) == in_features, f"{len(x)} != {in_features}"
 
     in_features = len(x)
     out_features = len(flat_layer) // (in_features * 2)
@@ -48,27 +45,31 @@ def flat_to_struct(flat: list[Bit], out_features: int, in_features: int) -> Stru
     for i in range(out_features):
         row: list[tuple[Bit, Bit]] = []
         for j in range(in_features):
-            idx = (i*in_features + j) * 2
+            idx = (i * in_features + j) * 2
             pos = flat[idx]
-            neg = flat[idx+1]
+            neg = flat[idx + 1]
             row.append((pos, neg))
         struct.append(row)
     return struct
 
 
-def execute_flat_circuit(x: list[Bit], flat_circuit: list[list[Bit]], sizes: list[int]) -> list[Bit]:
+def execute_flat_circuit(
+    x: list[Bit], flat_circuit: list[list[Bit]], sizes: list[int]
+) -> list[Bit]:
     """Takes as input all encoded_weights - list of flat matrices of the hidden circuit"""
-    curr = const('1') + x  # add the reference 1 bit to the input
-    for w, size, next_size in zip(flat_circuit, sizes[:-1], sizes[1:]):  # [:-1] since there is one more size than ws
+    curr = const("1") + x  # add the reference 1 bit to the input
+    for w, size, next_size in zip(
+        flat_circuit, sizes[:-1], sizes[1:]
+    ):  # [:-1] since there is one more size than ws
         curr = execute_flat_layer(curr, w, next_size, size)
     res = curr[1:]  # remove the reference 1 bit
     return res
 
 
-
 @dataclass(frozen=True, slots=True)
 class FlatCircuit:
     """A sequence of flat layers. Can be passed to execute_flat_circuit as activations."""
+
     layers: list[list[Bit]]
     sizes: list[int]
 
@@ -80,7 +81,9 @@ class FlatCircuit:
         return cls(flat_layers, sizes)
 
     @staticmethod
-    def ternarize_matrix(m: t.Tensor, fwidths: list[int], next_fwidths: list[int]) -> t.Tensor:
+    def ternarize_matrix(
+        m: t.Tensor, fwidths: list[int], next_fwidths: list[int]
+    ) -> t.Tensor:
         """
         Ternarize int matrix with max abs value per column
         m: (h, w)
@@ -96,7 +99,9 @@ class FlatCircuit:
             signs = t.sign(col).unsqueeze(1)
             col_wide = t.where(indices < abs_val, signs, t.zeros_like(indices))
             m_wide.append(col_wide)
-        m_ternary = t.repeat_interleave(t.cat(m_wide, dim=1), t.tensor(next_fwidths), dim=0)
+        m_ternary = t.repeat_interleave(
+            t.cat(m_wide, dim=1), t.tensor(next_fwidths), dim=0
+        )
         return m_ternary
 
     @staticmethod
@@ -114,24 +119,24 @@ class FlatCircuit:
         struct[neg_indices[0], neg_indices[1], 1] = 1
         struct[pos_indices[0], pos_indices[1], 0] = 1
 
-        flat_struct = struct.view(h*w*2)
+        flat_struct = struct.view(h * w * 2)
         ints = [int(el.item()) for el in flat_struct]
-        bitlist = const(''.join([str(el) for el in ints]))
+        bitlist = const("".join([str(el) for el in ints]))
         return bitlist
 
     @staticmethod
     def flat_tensor_to_bitlist(struct: t.Tensor) -> list[Bit]:
         h, w, _ = struct.shape
-        flat = struct.view(h*w*2)
+        flat = struct.view(h * w * 2)
         ints = [int(el.item()) for el in flat]
-        flatstr = ''.join([str(el) for el in ints])
+        flatstr = "".join([str(el) for el in ints])
         return const(flatstr)
 
     @classmethod
     def ternarize_matrices(cls, matrices: Matrices) -> list[t.Tensor]:
         """Convert matrix elements from int to [-1, 0, 1] while maintaining the functionality.
         1) First we expand each column by repeating the sign up to the max abs value in that column.
-        Assuming that the input features are also repeated accordingly, the result is the same. 
+        Assuming that the input features are also repeated accordingly, the result is the same.
         2) Then we repeat the rows according to the next matrix's max abs col values.
         This is done to ensure that the output features are repeated correctly for the next matrix.
         Here's an example:
@@ -151,7 +156,9 @@ class FlatCircuit:
         # calculate feature widths for each col in each matrix:
         fwidths = [max_abs_col(m) for m in ms]
         out_size = mlist[-1].size(0)
-        fwidths += [[1] for _ in range(out_size)]  # last next_fwidths is 1s, i.e. unchanged
+        fwidths += [
+            [1] for _ in range(out_size)
+        ]  # last next_fwidths is 1s, i.e. unchanged
 
         # ternarize each matrix
         args = zip(ms, fwidths, fwidths[1:])

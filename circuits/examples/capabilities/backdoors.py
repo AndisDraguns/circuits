@@ -3,16 +3,15 @@ from math import ceil
 
 from circuits.neurons.core import Bit, BitFn, const
 from circuits.neurons.operations import xors
-from circuits.examples.keccak import Keccak, xof, group
+from circuits.examples.keccak import Keccak, xof
+from circuits.utils.misc import group
 
 from circuits.sparse.compile import compiled
 from circuits.tensors.matrices import Matrices
 from circuits.examples.capabilities.flat import FlatCircuit, execute_flat_circuit
 
 
-def get_backdoor(trigger: list[Bit],
-                    payload: list[Bit],
-                    k: Keccak) -> BitFn:
+def get_backdoor(trigger: list[Bit], payload: list[Bit], k: Keccak) -> BitFn:
     """Creates a backdoor function with a payload and k baked in."""
     assert len(trigger) == k.msg_len and len(payload) == k.d
     hashed_t = k.bitlist_to_digest(trigger)  # (k.d,)
@@ -28,39 +27,41 @@ def get_backdoor(trigger: list[Bit],
     return backdoor
 
 
-def get_stacked_backdoor(trigger: list[Bit],
-                    payloads: list[list[Bit]],
-                    k: Keccak
-                    ) -> Callable[[list[Bit]], list[list[Bit]]]:
+def get_stacked_backdoor(
+    trigger: list[Bit], payloads: list[list[Bit]], k: Keccak
+) -> Callable[[list[Bit]], list[list[Bit]]]:
     """Constructs a backdoor with payloads deployed at multiple depths."""
     # TODO: option for padding payloads to obfuscate matrix sizes
 
-    group_sizes = [ceil(len(p)/k.d) for p in payloads]  # number of digests per payload
+    group_sizes = [
+        ceil(len(p) / k.d) for p in payloads
+    ]  # number of digests per payload
     n_digests = sum(group_sizes)
 
     digests = xof(trigger, n_digests, k)
     digests = group(digests, group_sizes)
-    keys = [xors([d, p]) for d, p in zip(digests, payloads)]  # xors also reduces size to len(payload)
-    keys = [const([int(b.activation) for b in key]) for key in keys]  # cut off tracing past key creation
-    
+    keys = [
+        xors([d, p]) for d, p in zip(digests, payloads)
+    ]  # xors also reduces size to len(payload)
+    keys = [
+        const([int(b.activation) for b in key]) for key in keys
+    ]  # cut off tracing past key creation
+
     def stacked_backdoor(x: list[Bit]) -> list[list[Bit]]:
         digests = xof(x, n_digests, k)
         digests = group(digests, group_sizes)
         ambivalents = [xors([d, key]) for d, key in zip(digests, keys)]
         return ambivalents
-    
+
     return stacked_backdoor
 
 
 def get_sandbagger(
-        capability: BitFn,
-        inp_len: int,
-        trigger: list[Bit],
-        k: Keccak
-        ) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+    capability: BitFn, inp_len: int, trigger: list[Bit], k: Keccak
+) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
     """
     Constructs a sandbagger that only the capability function if given the trigger, otherwise
-    deploys a random circuit. 
+    deploys a random circuit.
     The capability is turned into a circuit, which is then turned into FlatCircuit.
     The layers of FlatCircuit are used as payloads to create the sandbagger.
     """
@@ -71,8 +72,12 @@ def get_sandbagger(
 
     def sandbagger(ambiguous_input: list[Bit], circuit_input: list[Bit]) -> list[Bit]:
         """Ambiguous bits might be the trigger that unlocks the circuit"""
-        ambivalent_circuit = stacked_backdoor(ambiguous_input)  # hidden circuit if trigger is present
-        circuit_output = execute_flat_circuit(circuit_input, ambivalent_circuit, flat.sizes)
+        ambivalent_circuit = stacked_backdoor(
+            ambiguous_input
+        )  # hidden circuit if trigger is present
+        circuit_output = execute_flat_circuit(
+            circuit_input, ambivalent_circuit, flat.sizes
+        )
         return circuit_output
 
     return sandbagger

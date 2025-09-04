@@ -31,7 +31,7 @@ def reverse_bytes(bits: list[Bit]) -> list[Bit]:
     """Reverse byte order while preserving bit order in each byte."""
     if len(bits) >= 8:
         assert len(bits) % 8 == 0, f"Got bit length {len(bits)}"
-        byte_groups = [bits[i:i+8] for i in range(0, len(bits), 8)]
+        byte_groups = [bits[i : i + 8] for i in range(0, len(bits), 8)]
         return [bit for byte in reversed(byte_groups) for bit in byte]
     else:
         return bits
@@ -40,10 +40,10 @@ def reverse_bytes(bits: list[Bit]) -> list[Bit]:
 def lanes_to_state(lanes: Lanes) -> list[Bit]:
     """Converts lanes (5, 5, w) to a state vector (5 x 5 x w,)"""
     w = len(lanes[0][0])
-    state = [lanes[0][0][0] for _ in range(5*5*w)]  # placeholder state
+    state = [lanes[0][0][0] for _ in range(5 * 5 * w)]  # placeholder state
     for x in range(5):
         for y in range(5):
-            state[w*(x+5*y) : w*(x+5*y) + w] = reverse_bytes(lanes[x][y])
+            state[w * (x + 5 * y) : w * (x + 5 * y) + w] = reverse_bytes(lanes[x][y])
     return state
 
 
@@ -79,7 +79,10 @@ def rho_pi(lanes: Lanes) -> Lanes:
     current = result[x][y]
     for t in range(24):
         (x, y) = (y, (2 * x + 3 * y) % 5)  # pi
-        (current, result[x][y]) = (result[x][y], rot(current, -(t + 1) * (t + 2) // 2))  # rho
+        (current, result[x][y]) = (
+            result[x][y],
+            rot(current, -(t + 1) * (t + 2) // 2),
+        )  # rho
     return result
 
 
@@ -106,23 +109,24 @@ def iota(lanes: Lanes, rc: str) -> Lanes:
 def get_round_constants(b: int, n: int) -> list[str]:
     """Calculates round constants as bitstrings"""
     from math import log2
-    l = int(log2(b//(5*5)))
+
+    l = int(log2(b // (5 * 5)))
     cycle_len = 255  # RC cycles every 255 rounds
     rcs: list[str] = []  # round constants
     r = 1
     for _ in range(cycle_len):
         rc = 0
         for j in range(7):
-            r = ((r << 1) ^ ((r >> 7)*0x71)) % 256
-            if (r & 2):
-                d = 1 << ((1<<j)-1)
+            r = ((r << 1) ^ ((r >> 7) * 0x71)) % 256
+            if r & 2:
+                d = 1 << ((1 << j) - 1)
                 rc ^= d
         rcs.append(format(rc, "064b"))
-    n_default_rounds = 12+2*l
+    n_default_rounds = 12 + 2 * l
     rcs = rcs[n_default_rounds:] + rcs[:n_default_rounds]  # ends on last round
-    rcs = rcs * (n//cycle_len) + rcs  # if n_rounds > cycle_len
+    rcs = rcs * (n // cycle_len) + rcs  # if n_rounds > cycle_len
     rcs = rcs[-n:]  # truncate to last n_rounds
-    rcs = [rc[-2**l:] for rc in rcs]  # lowest w=2**l bits
+    rcs = [rc[-(2**l) :] for rc in rcs]  # lowest w=2**l bits
     return rcs
 
 
@@ -141,8 +145,9 @@ class Keccak:
     Keccak function with parameters.
     l: log2(word length)
     n: number of rounds
-    c: capacity. None for default of b//2.
+    c: capacity. None -> c heuristically set to = (25 * 2**l) // 2.
     """
+
     l: int = 6  # log2(word length)
     n: int = 24  # number of rounds
     c: int | None = None  # capacity
@@ -158,7 +163,7 @@ class Keccak:
 
     @property
     def capacity(self) -> int:
-        """Capacity."""
+        """Capacity. 448 bits for SHA3."""
         if self.c is not None:
             return self.c
         else:
@@ -176,22 +181,22 @@ class Keccak:
 
     @property
     def r(self) -> int:
-        """Rate. Default is 1152 bits for SHA3."""
+        """Rate. 1152 bits for SHA3."""
         return self.b - self.capacity
 
     @property
     def d(self) -> int:
-        """Digest length. Default is 224 bits for SHA3."""
+        """Digest length. 224 bits for SHA3."""
         return self.capacity // 2
 
     @property
     def msg_len(self) -> int:
-        """Message length. Default is 1144 bits for SHA3."""
+        """Message length. 1144 bits for SHA3."""
         return self.r - self.suffix_len
 
     @property
     def n_default_rounds(self) -> int:
-        """Number of default rounds. Default is 24 for SHA3."""
+        """Number of default rounds. 24 for SHA3."""
         return 12 + 2 * self.l
 
     def check_params(self) -> None:
@@ -201,32 +206,33 @@ class Keccak:
         if self.msg_len < 0:
             raise ValueError(f"msg_len ({self.msg_len}) must be greater than 0")
 
-
     def bitlist_to_msg(self, bitlist: list[Bit]) -> list[Bit]:
         """Pads a bitlist to the message length"""
         assert isinstance(bitlist, list) and all(isinstance(b, Bit) for b in bitlist)
         if len(bitlist) > self.msg_len:
-            raise ValueError(f"Input length {len(bitlist)} exceeds msg_len {self.msg_len}")
+            raise ValueError(
+                f"Input length {len(bitlist)} exceeds msg_len {self.msg_len}"
+            )
         n_pad_bits = max(0, self.msg_len - len(bitlist))
         if self.pad_char is not None:
             pad_int8 = self.pad_char.encode("utf-8")[0]  # [0] for first byte
             pad_bitstr = format(pad_int8, "08b")
-            pad = const(pad_bitstr * (1+n_pad_bits//8))  # 8 bits
+            pad = const(pad_bitstr * (1 + n_pad_bits // 8))  # 8 bits
             pad = pad[:n_pad_bits]  # truncate to n_pad_bits
         else:
-            pad = const('0' * n_pad_bits)
+            pad = const("0" * n_pad_bits)
         msg = bitlist + pad
-        return msg[:self.msg_len]  # (msg_len)
-
+        return msg[: self.msg_len]  # (msg_len)
 
     def msg_to_state(self, msg: list[Bit]) -> State:
         # msg size (msg_len)
-        assert len(msg) == self.msg_len, f"Input length {len(msg)} does not match msg_len {self.msg_len}"
+        assert (
+            len(msg) == self.msg_len
+        ), f"Input length {len(msg)} does not match msg_len {self.msg_len}"
         sep = const(format(self.suffix, "08b"))
         cap = const("0" * self.capacity)
         state = msg + sep + cap
         return state  # (b)
-    
 
     def get_functions(self) -> list[list[Callable[[Lanes], Lanes]]]:
         """Returns the functions for each round"""
@@ -237,7 +243,6 @@ class Keccak:
             fns.append([theta, rho_pi, chi, r_iota])
         return fns  # (n, 4)
 
-
     def hash_state(self, state: State) -> State:
         """Returns the hashed state"""
         lanes = state_to_lanes(state)  # (5, 5, w)
@@ -246,7 +251,6 @@ class Keccak:
             lanes = self.round(lanes, fns[round_nr])  # (5, 5, w)
         state = lanes_to_state(lanes)
         return state  # (b)
-    
 
     def round(self, lanes: Lanes, round_fns: list[Callable[[Lanes], Lanes]]) -> Lanes:
         """Applies a single round to the state"""
@@ -254,13 +258,11 @@ class Keccak:
             lanes = fn(lanes)
         return lanes
 
-
     def crop_digest(self, hashed: State) -> list[Bit]:
         """Returns the digest of the hashed state"""
         # hashed size (b)
-        digest = hashed[:self.d]
+        digest = hashed[: self.d]
         return digest  # (d)
-    
 
     def bitlist_to_digest(self, bitlist: list[Bit]) -> list[Bit]:
         """Returns the digest of the bitlist"""
@@ -271,17 +273,15 @@ class Keccak:
         digest = self.crop_digest(hashed)  # (d)
         return digest  # (d)
 
-
     # Function for easier operating with Bits:
     def format(self, phrase: str, clip: bool = False) -> Bits:
         """Formats a string to Bits message"""
         # phrase size (<=msg_len)
         bitlist = Bits(phrase).bitlist
         if clip:
-            bitlist = bitlist[:self.msg_len]
+            bitlist = bitlist[: self.msg_len]
         msg = self.bitlist_to_msg(bitlist)
         return Bits(msg)  # (msg_len)
-    
 
     def digest(self, msg_bits: Bits) -> Bits:
         """Returns the digest Bits of the hashed message Bits"""
@@ -301,16 +301,3 @@ def xof(bitlist: list[Bit], depth: int, k: Keccak) -> list[list[Bit]]:
         state = k.hash_state(state)
         digests.append(k.crop_digest(state))
     return digests
-
-from typing import Any
-def group(lst: list[Any], sizes: list[int]) -> list[Any]:
-    """Groups a list into sublists of specified sizes."""
-    grouped: list[list[Any]] = []
-    start = 0
-    for size in sizes:
-        end = start + size
-        sublist = lst[start:end]
-        flat_sublist = [x for xs in sublist for x in xs]
-        grouped.append(flat_sublist)
-        start = end
-    return grouped

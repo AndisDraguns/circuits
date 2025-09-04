@@ -1,10 +1,12 @@
 from circuits.neurons.core import Bit
-from circuits.neurons.operations import const, xor, inhib 
+from circuits.neurons.operations import const, xor, inhib
 from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy_lanes
 from keccak import theta, rho_pi, chi, iota, get_round_constants, Keccak
 
 
 from circuits.neurons.core import gate
+
+
 def copy_bit(x: Bit) -> Bit:
     return gate([x], [1], 1)
 
@@ -39,9 +41,11 @@ def fuse_nots_with_xor(not_indices: list[int]):
             for j in range(n):
                 thresholds[j] -= 1
                 weights[j][i] = -1
+
     def fused_xor(x: list[Bit]) -> Bit:
         counters = [gate(x, weights[i], thresholds[i]) for i in range(len(x))]
         return gate(counters, [(-1) ** i for i in range(len(x))], 1)
+
     return fused_xor
 
 
@@ -52,10 +56,13 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
     theta, rho, pi and chi, iota are split off due to phase-shifted loop for fusing gates.
     """
     constants = get_round_constants(b, n)
-    flip_indices = [{(0, 0, i): None for i, val in enumerate(constants[r]) if val=="1"} for r in range(n)]
-    w = b//25
+    flip_indices = [
+        {(0, 0, i): None for i, val in enumerate(constants[r]) if val == "1"}
+        for r in range(n)
+    ]
+    w = b // 25
 
-    if n>0:
+    if n > 0:
         lanes = theta(lanes)
         lanes = rho_pi(lanes)
 
@@ -72,7 +79,9 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
                     and_bits[x][y][z] = inhib(
                         [lanes[(x + 1) % 5][y][z], lanes[(x + 2) % 5][y][z]]
                     )
-                    and_bits[x][y][z] = copy_bit(and_bits[x][y][z])  # save time in graph building
+                    and_bits[x][y][z] = copy_bit(
+                        and_bits[x][y][z]
+                    )  # save time in graph building
 
                     not_indices = get_not_indices(x, y, z, flip_indices[round], w)
                     fused_gate = fuse_nots_with_xor(not_indices)
@@ -96,19 +105,21 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
         lanes = copy_lanes(lanes_tmp)
         lanes = rho_pi(lanes)
 
-    if n>0:
+    if n > 0:
         lanes = chi(lanes)
         lanes = iota(lanes, constants[-1])
     return lanes
 
 
-def keccak_fused(message: list[Bit], c: int=448, l: int=6, n: int=24) -> list[Bit]:
+def keccak_fused(
+    message: list[Bit], c: int = 448, l: int = 6, n: int = 24
+) -> list[Bit]:
     # p = KeccakParams(c, l, n)
     k = Keccak(c, l, n)
-    suffix = const(format(0x86, "08b") + "0"*c)
+    suffix = const(format(0x86, "08b") + "0" * c)
     state = message + suffix
     lanes = state_to_lanes(state)
     lanes = keccak_p_fused(lanes, k.b, n)
     state = lanes_to_state(lanes)
-    state = state[:k.d]
+    state = state[: k.d]
     return state

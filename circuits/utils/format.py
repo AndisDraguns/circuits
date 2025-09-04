@@ -13,7 +13,7 @@ class Bits:
 
     bit_tuple: tuple[Bit, ...]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Bits({self.bitstr})"
 
     def __init__(self, value: Any, min_length: int | None = None) -> None:
@@ -50,9 +50,14 @@ class Bits:
                 return value
             case list() if cls._is_bool_int_list(value):
                 return const([int(v) for v in value])
-            case _:
-                # TODO: more informative error message, e.g. list of types received
-                raise ValueError(f"Cannot create Bits from {type(value)}")
+            case list():
+                val_types = [str(type(v)) for v in value]
+                if len(val_types) > 5:
+                    res = ", ".join(val_types[:5]) + "..."
+                else:
+                    res = ", ".join(val_types)
+                raise ValueError(f"Cannot create Bits from {res}")
+        raise ValueError(f"Cannot create Bits from {type(value)}")
 
     @classmethod
     def from_str(
@@ -133,6 +138,7 @@ def format_msg(message: str, bit_len: int = 1144, pad: str = "_") -> Bits:
 
 def bitfun(function: Callable[..., Any]) -> Callable[..., Bits]:
     """Create a function with Bits instead of list[Bit] in inputs and output"""
+
     def bits_function(*args: Bits | Any, **kwargs: dict[str, Any]) -> Bits:
         modified_args = tuple(
             arg.bitlist if isinstance(arg, Bits) else arg for arg in args

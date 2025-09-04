@@ -1,5 +1,6 @@
 from circuits.neurons.core import Bit, gate, const
 
+
 def and_gate(input_bits: list[Bit]) -> Bit:
     """
     Here we define a logical 'and' gate with arbitrary number of input bits.

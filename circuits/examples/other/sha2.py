@@ -32,9 +32,7 @@ def sha2_extend(message: list[Bit]) -> list[list[Bit]]:
     return w
 
 
-def sha2_round(
-    vars: list[list[Bit]], kt: list[Bit], wt: list[Bit]
-) -> list[list[Bit]]:
+def sha2_round(vars: list[list[Bit]], kt: list[Bit], wt: list[Bit]) -> list[list[Bit]]:
     """SHA-256 compression function"""
     a, b, c, d, e, f, g, h = vars
     ch = xors([ands([e, f]), ands([nots(e), g])])

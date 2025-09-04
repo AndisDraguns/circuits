@@ -9,7 +9,7 @@ def test_mlp_no_hardcoding():
     Makes sure that example input/output trace is not hardcoded into the MLP.
     The MLP should be able to compute the hash of a different message.
     """
-    k = Keccak(c=448, l=6, n=2, pad_char="_")
+    k = Keccak(l=6, n=2, c=448, pad_char="_")
 
     # Hash two different messages
     phrase1 = "Rachmaninoff"
@@ -28,13 +28,15 @@ def test_mlp_no_hardcoding():
     out2 = mlp.infer_bits(msg2)
     assert hashed1.hex == out1.hex
     assert hashed2.hex == out2.hex
-    expected2 = "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
+    expected2 = (
+        "8fd11d3d80ac8960dcfcde83f6450eac2d5ccde8a392be975fb46372"  # regression test
+    )
     assert out2.hex == expected2
 
 
 def test_mlp_simple():
     """Test MLP implementation with keccak"""
-    k = Keccak(c=20, l=1, n=3, pad_char="_")   # reduced number of rounds for testing
+    k = Keccak(l=1, n=3, c=20, pad_char="_")  # reduced number of rounds for testing
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
@@ -52,7 +54,8 @@ def test_mlp_simple():
 def test_mlp_simple_blocks():
     """Test MLP implementation with keccak"""
     from circuits.compile.blockgraph import BlockGraph
-    k = Keccak(c=10, l=0, n=3, pad_char="_")
+
+    k = Keccak(l=0, n=3, c=10, pad_char="_")
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)

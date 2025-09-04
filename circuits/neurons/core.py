@@ -6,6 +6,7 @@ from collections.abc import Callable
 @dataclass(frozen=True, eq=False, slots=True)
 class Signal:
     """A connection point between neurons, with an activation value"""
+
     activation: bool | float
     source: "Neuron"
 

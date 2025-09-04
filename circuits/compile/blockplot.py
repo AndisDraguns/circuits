@@ -7,6 +7,7 @@ from circuits.compile.block_format import format_block
 @dataclass(frozen=True)
 class Color:
     """HSL color representation (hue, saturation, lightness)"""
+
     h: float  # hue
     s: float  # saturation
     l: float  # lightness
@@ -16,32 +17,43 @@ class Color:
     def css(self) -> str:
         return f"hsla({self.h}, {self.s}%, {self.l}%, {self.a})"
 
-    def __add__(self, other: 'Color') -> 'Color':
-        return Color((self.h+other.h)%360, self.s+other.s, self.l+other.l, self.a+other.a)
+    def __add__(self, other: "Color") -> "Color":
+        return Color(
+            (self.h + other.h) % 360,
+            self.s + other.s,
+            self.l + other.l,
+            self.a + other.a,
+        )
 
-    def __mul__(self, k: float | int) -> 'Color':
-        return Color(self.h*k%360, self.s*k, self.l*k, self.a*k)
+    def __mul__(self, k: float | int) -> "Color":
+        return Color(self.h * k % 360, self.s * k, self.l * k, self.a * k)
 
 
 @dataclass(frozen=True)
 class Rect:
     """Rectangle with percentage-based coordinates"""
+
     x: float
     y: float
     w: float
     h: float
     small: bool = False  # True if rectangle was too small to display
-    
-    def shrink(self, amount: float) -> 'Rect':
+
+    def shrink(self, amount: float) -> "Rect":
         """Shrink rectangle by amount on all sides"""
         half = amount / 2
-        return Rect(self.x+half, self.y+half, self.w-amount, self.h-amount)
+        return Rect(self.x + half, self.y + half, self.w - amount, self.h - amount)
 
-    def to_percentages(self, root_w: float, root_h: float) -> 'Rect':
+    def to_percentages(self, root_w: float, root_h: float) -> "Rect":
         """Convert absolute coordinates to percentages"""
-        return Rect(self.x/root_w*100, self.y/root_h*100, self.w/root_w*100, self.h/root_h*100)
+        return Rect(
+            self.x / root_w * 100,
+            self.y / root_h * 100,
+            self.w / root_w * 100,
+            self.h / root_h * 100,
+        )
 
-    def ensure_visible_size(self, min_w: float = 0.01, min_h: float = 0.1) -> 'Rect':
+    def ensure_visible_size(self, min_w: float = 0.01, min_h: float = 0.1) -> "Rect":
         """Returns a rectangle that is guaranteed to be visible"""
         if self.w >= min_w and self.h >= min_h:
             return self
@@ -55,6 +67,7 @@ class Rect:
 @dataclass
 class VisualConfig:
     """Configuration for block visualization"""
+
     base_color: Color = Color(180, 98, 80, 0.9)  # cyan
     nesting_t: Color = Color(2, 0, -5)
     different_t: Color = Color(200, 0, 0)
@@ -71,15 +84,17 @@ class VisualConfig:
     def get_shrink_amount(self, nesting: int, max_nesting: int) -> float:
         """Calculate shrink amount for given nesting level"""
         return nesting * self.max_shrinkage / (max_nesting + 1)
-    
+
     def get_color(self, nesting: int, tags: set[str], is_small: bool) -> Color:
         """Calculate color for given nesting level"""
         color = self.base_color + self.nesting_t * nesting
-        transforms = {'different': self.different_t,
-                      'constant': self.constant_t,
-                      'copy': self.copy_t,
-                      'missing': self.missing_t,
-                      'folded': self.folded_t}
+        transforms = {
+            "different": self.different_t,
+            "constant": self.constant_t,
+            "copy": self.copy_t,
+            "missing": self.missing_t,
+            "folded": self.folded_t,
+        }
         for tag in tags:
             if tag in transforms:
                 color += transforms[tag]
@@ -90,10 +105,11 @@ class VisualConfig:
         return color
 
 
-def generate_block_html(b: Block, config: VisualConfig, 
-                        max_nesting: int, root_dims: tuple[float, float]) -> str:
+def generate_block_html(
+    b: Block, config: VisualConfig, max_nesting: int, root_dims: tuple[float, float]
+) -> str:
     """Generate HTML for a single block and its children"""
-    if b.name in {'__init__', 'outgoing'}:
+    if b.name in {"__init__", "outgoing"}:
         return ""
 
     # Create rectangle and apply transformations
@@ -110,27 +126,27 @@ def generate_block_html(b: Block, config: VisualConfig,
     hover_color = color + config.hover_t
 
     # Generate tooltip
-    truncated = b.out_str[:config.max_output_chars]
+    truncated = b.out_str[: config.max_output_chars]
     if len(b.out_str) > config.max_output_chars:
-        truncated += '...'
+        truncated += "..."
     tooltip = b.full_info()
 
     # Generate children HTML
-    children_html = ''.join(
-        generate_block_html(child, config, max_nesting, root_dims) 
+    children_html = "".join(
+        generate_block_html(child, config, max_nesting, root_dims)
         for child in b.children
     )
-    
-    return f'''
+
+    return f"""
     <div class="block" 
          title="{tooltip}"
          style="--x:{rect.x}; --y:{rect.y}; --w:{rect.w}; --h:{rect.h}; 
                 --color:{color.css}; --hover-color:{hover_color.css};">
         {children_html}
-    </div>'''
+    </div>"""
 
 
-HTML_TEMPLATE = '''<!DOCTYPE html>
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -225,17 +241,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     </script>
 </body>
-</html>'''
+</html>"""
 
 
-def visualize(b: Block, filename: str = "index.html", config: VisualConfig | None = None) -> None:
+def visualize(
+    b: Block, filename: str = "index.html", config: VisualConfig | None = None
+) -> None:
     """Generate and save visualization to file"""
     config = config or VisualConfig()
     assert b.w > 0 and b.h > 0
     format_block(b)
     blocks_html = generate_block_html(b, config, b.max_leaf_nesting, (b.w, b.h))
     html = HTML_TEMPLATE.format(blocks=blocks_html)
-    with open(filename, 'w', encoding='utf-8') as f:
+    with open(filename, "w", encoding="utf-8") as f:
         f.write(html)
 
 

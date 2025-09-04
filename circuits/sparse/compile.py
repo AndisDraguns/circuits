@@ -10,11 +10,14 @@ from circuits.utils.misc import OrderedSet
 @dataclass(eq=False, slots=True)
 class Node:
     """A node representing a neuron in the sparse graph"""
+
     original_signal: Signal
     metadata: dict[str, str] = field(default_factory=dict[str, str])
     parents: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
     children: OrderedSet["Node"] = field(default_factory=lambda: OrderedSet())
-    weights: dict["Node", int | float] = field(default_factory=dict["Node", int | float])
+    weights: dict["Node", int | float] = field(
+        default_factory=dict["Node", int | float]
+    )
     bias: int | float = 0
     depth: int = -1  # -1 for unset
     column: int = -1  # -1 for unset
@@ -36,7 +39,7 @@ class Node:
     @classmethod
     def from_signal(cls, s: Signal) -> "Node":
         return cls(s)
-    
+
     def copy(self) -> "Node":
         """Copy node forward: same original_signal and metadata"""
         return Node(self.original_signal, self.metadata.copy())
@@ -47,7 +50,7 @@ def check_for_duplicates(layers: list[list[Node]]) -> None:
     seen: set[str] = set()
     for layer in layers:
         for node in layer:
-            n = node.metadata.get('name', 'Unnamed')
+            n = node.metadata.get("name", "Unnamed")
             if n in seen and n != "Unnamed":
                 raise ValueError(f"Duplicate node found: {n}")
             seen.add(n)
@@ -68,9 +71,10 @@ class Graph:
         layers = self.ensure_adjacent_parents(layers)
         self.layers = layers
 
-
     @staticmethod
-    def fuse_constants_into_biases(constants: OrderedSet[Node], excluded: OrderedSet[Node]) -> None:
+    def fuse_constants_into_biases(
+        constants: OrderedSet[Node], excluded: OrderedSet[Node]
+    ) -> None:
         while constants:
             new_constants: OrderedSet["Node"] = OrderedSet()
             for c in constants:
@@ -83,7 +87,6 @@ class Graph:
                     if len(child.parents) == 0 and child not in excluded:
                         new_constants.add(child)  # treat any new leaf nodes
             constants = new_constants
-
 
     @classmethod
     def load_nodes(
@@ -101,8 +104,8 @@ class Graph:
         constants: OrderedSet[Node] = OrderedSet()
 
         for i, inp in enumerate(inp_nodes):
-            if inp.metadata.get('name') is None:
-                inp.metadata['name'] = f"i{i}"
+            if inp.metadata.get("name") is None:
+                inp.metadata["name"] = f"i{i}"
 
         # Go backwards from output nodes to record all connections
         while frontier:
@@ -136,7 +139,6 @@ class Graph:
         assert not disconnected, "Outputs not connected to inputs"
         return inp_nodes, out_nodes, constants
 
-
     @staticmethod
     def initialize_layers(inp_nodes: list[Node]) -> list[list[Node]]:
         """Places signals into layers. Sets depth as distance from input nodes"""
@@ -163,7 +165,6 @@ class Graph:
             depth += 1
         return layers
 
-
     @staticmethod
     def set_output_layer(
         layers: list[list[Node]], out_nodes: list[Node]
@@ -179,7 +180,6 @@ class Graph:
         for out in out_set:
             out.depth = len(layers) - 1
         return layers
-
 
     @staticmethod
     def ensure_adjacent_parents(layers: list[list[Node]]) -> list[list[Node]]:
@@ -200,7 +200,7 @@ class Graph:
                 # Create chain of copies
                 copy_chain: list[Node] = []
                 prev = node
-                prev_name = prev.metadata.get('name', 'n')
+                prev_name = prev.metadata.get("name", "n")
                 counter = 0
                 for depth in range(layer_idx + 1, layer_idx + n_missing_layers + 1):
                     curr = prev.copy()
@@ -208,7 +208,7 @@ class Graph:
                     curr.bias = -1
                     curr.add_parent(prev, weight=1)
                     copy_chain.append(curr)
-                    curr.metadata['name'] = f"{prev_name}" + "`" + str(counter)
+                    curr.metadata["name"] = f"{prev_name}" + "`" + str(counter)
                     counter += 1
                     prev = curr
 
@@ -233,32 +233,37 @@ class Graph:
 
         return layers
 
-
     def run(self, inputs: list[Signal]) -> list[Signal]:
         """Run the graph with given inputs and return outputs."""
         if len(inputs) != len(self.layers[0]):
-            raise ValueError(f"Expected {len(self.layers[0])} inputs, got {len(inputs)}")
+            raise ValueError(
+                f"Expected {len(self.layers[0])} inputs, got {len(inputs)}"
+            )
 
         # Set input activations
         for inp, node in zip(inputs, self.layers[0]):
             node.run_val = str(int(inp.activation))
-        
+
         # Forward pass through the graph
         for layer in self.layers[1:]:  # skip input layer
             for node in layer:
-                activation = sum(
-                    int(parent.run_val) * node.weights[parent] for parent in node.parents
-                ) + node.bias
+                activation = (
+                    sum(
+                        int(parent.run_val) * node.weights[parent]
+                        for parent in node.parents
+                    )
+                    + node.bias
+                )
                 node.run_val = str(int(activation >= 0))
 
         outputs = const("".join(node.run_val for node in self.layers[-1]))
         return outputs
 
-
     def __repr__(self) -> str:
         """String representation of the graph."""
         return "\n\n".join(
-            f"Layer {i}: " + ", ".join(f"{node.metadata.get('name', 'N')}" for node in layer)
+            f"Layer {i}: "
+            + ", ".join(f"{node.metadata.get('name', 'N')}" for node in layer)
             for i, layer in enumerate(self.layers)
         )
 
@@ -268,7 +273,9 @@ def compiled_from_io(inputs: list[Signal], outputs: list[Signal]) -> Graph:
     return Graph(inputs, outputs)
 
 
-def compiled(function: Callable[..., list[Signal]], input_len: int, **kwargs: Any) -> Graph:
+def compiled(
+    function: Callable[..., list[Signal]], input_len: int, **kwargs: Any
+) -> Graph:
     """Compiles a function into a graph."""
     inp = const("0" * input_len)
     out = function(inp, **kwargs)
