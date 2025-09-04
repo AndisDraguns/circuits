@@ -35,7 +35,7 @@ def test_sandbagging():
     inp_len = 2*bitlen
     trigger = const('11010011')
     k = Keccak(c=100, l=2, n=1, auto_c=True)
-    k.d = k.b
+    # k.d = k.b
     sandbagger = get_sandbagger(adder_flat, inp_len, trigger, k)
 
     # Test the sandbagging circuit
@@ -96,7 +96,7 @@ def test_subset_parity_sandbagging():
     inp_len = 8
     trigger = const('11010011')
     k = Keccak(c=30, l=2, n=1, auto_c=True)
-    k.d = k.b
+    # k.d = k.b
     subset_indices = [0,2,4,6]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
@@ -137,7 +137,7 @@ def test_subset_parity_sandbagging_blocks():
     inp_len = 5
     trigger = const('11010')
     k = Keccak(c=10, l=0, n=1, auto_c=True)
-    k.d = k.b
+    # k.d = k.b
     subset_indices = [0,2,4]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)

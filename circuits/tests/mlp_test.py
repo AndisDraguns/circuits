@@ -62,8 +62,8 @@ def test_mlp_simple_blocks():
 
     out = mlp.infer_bits(message)
     assert hashed.bitstr == out.bitstr, f"{hashed.bitstr}, {out.bitstr}"
-    # expected = "0111111010"  # regression test
-    # assert out.bitstr == expected
+    expected = "10001"  # regression test
+    assert out.bitstr == expected
 
 
 if __name__ == "__main__":

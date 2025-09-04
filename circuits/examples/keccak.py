@@ -135,32 +135,17 @@ def keccak_round(lanes: Lanes, rc: str) -> Lanes:
     return lanes
 
 
-def keccak_p(state: State, b: int, n: int) -> State:
-    """Hashes (5,5,l**2) to (5,5,l**2)"""
-    constants = get_round_constants(b, n)
-    lanes = state_to_lanes(state)
-    for round in range(n):
-        lanes = keccak_round(lanes, constants[round])
-    state = lanes_to_state(lanes)
-    return state
-
-
 @dataclass
 class Keccak:
     """
-    Keccak instance. Default values for SHA3.
+    Keccak function with parameters.
+    l: log2(word length)
+    n: number of rounds
+    c: capacity. None for default of b//2.
     """
-    c: int = 448  # capacity
     l: int = 6  # log2(word length)
     n: int = 24  # number of rounds
-
-    # derived params:
-    w: int = 64  # word length
-    b: int = 1600  # state size
-    r: int = 1152  # rate
-    d: int = 224  # digest length
-    msg_len: int = 1144
-    n_default_rounds: int = 24
+    c: int | None = None  # capacity
 
     # independent params
     pad_char: str | None = None
@@ -168,20 +153,51 @@ class Keccak:
     suffix_len: int = 8  # constant
     auto_c: bool = False  # override c with an automatically calculated value
 
-    def __post_init__(self):
-        self.w = 2**self.l
-        self.b = self.w * 5 * 5
-        if self.auto_c:
-            self.c = self.b // 2
-            msg_len = (self.b - self.c) - self.suffix_len
-            if msg_len < 1:  # ensure capacity to process at least 1 message bit
-                self.c += (-msg_len) + 1
-        self.r = self.b - self.c
-        self.msg_len = self.r - self.suffix_len
-        self.d = self.c // 2
-        self.n_default_rounds = 12 + 2 * self.l
-        if self.c > self.b:
-            raise ValueError(f"c ({self.c}) must be less than b ({self.b})")
+    def __post_init__(self) -> None:
+        self.check_params()
+
+    @property
+    def capacity(self) -> int:
+        """Capacity."""
+        if self.c is not None:
+            return self.c
+        else:
+            return self.b // 2  # heuristic choice of capacity
+
+    @property
+    def w(self) -> int:
+        """Word length. 64 bits for SHA3."""
+        return 2**self.l
+
+    @property
+    def b(self) -> int:
+        """State size. 1600 bits (5x5x64) for SHA3."""
+        return self.w * 5 * 5
+
+    @property
+    def r(self) -> int:
+        """Rate. Default is 1152 bits for SHA3."""
+        return self.b - self.capacity
+
+    @property
+    def d(self) -> int:
+        """Digest length. Default is 224 bits for SHA3."""
+        return self.capacity // 2
+
+    @property
+    def msg_len(self) -> int:
+        """Message length. Default is 1144 bits for SHA3."""
+        return self.r - self.suffix_len
+
+    @property
+    def n_default_rounds(self) -> int:
+        """Number of default rounds. Default is 24 for SHA3."""
+        return 12 + 2 * self.l
+
+    def check_params(self) -> None:
+        """Checks that the parameters are valid"""
+        if self.capacity > self.b:
+            raise ValueError(f"c ({self.capacity}) must be less than b ({self.b})")
         if self.msg_len < 0:
             raise ValueError(f"msg_len ({self.msg_len}) must be greater than 0")
 
@@ -207,7 +223,7 @@ class Keccak:
         # msg size (msg_len)
         assert len(msg) == self.msg_len, f"Input length {len(msg)} does not match msg_len {self.msg_len}"
         sep = const(format(self.suffix, "08b"))
-        cap = const("0" * self.c)
+        cap = const("0" * self.capacity)
         state = msg + sep + cap
         return state  # (b)
     
@@ -298,23 +314,3 @@ def group(lst: list[Any], sizes: list[int]) -> list[Any]:
         grouped.append(flat_sublist)
         start = end
     return grouped
-
-# from collections.abc import Generator
-# def xof(bitlist: list[Bit], depth: int, k: Keccak) -> Generator[list[Bit], None, None]:
-#     """Returns the XOF of the message - an extended output of keccak"""
-#     msg = k.bitlist_to_msg(bitlist)
-#     state = k.msg_to_state(msg)
-#     for _ in range(depth):
-#         state = k.hash_state(state)
-#         digest = k.crop_digest(state)
-#         yield digest
-
-
-# def group(gen: Generator[list[Bit], None, None], sizes: list[int]) -> list[list[Bit]]:
-#     """Groups a list into sublists of specified sizes."""
-#     grouped: list[list[Bit]] = [[] for _ in sizes]
-#     # start = 0
-#     for i, size in enumerate(sizes):
-#         for _ in range(size):
-#             grouped[i] = next(gen)
-#     return grouped
