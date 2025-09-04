@@ -16,9 +16,9 @@ class Matrices:
     def from_graph(cls, graph: Graph, dtype: t.dtype = t.int) -> "Matrices":
         """Set parameters of the model from weights and biases"""
         layers = graph.layers[1:]  # skip input layer as it has no incoming weights
-        sizes_in = [len(l) for l in graph.layers]  # incoming weight sizes
+        sizes_in = [len(layer) for layer in graph.layers]  # incoming weight sizes
         params = [
-            cls.layer_to_params(l, s, dtype) for l, s in zip(layers, sizes_in)
+            cls.layer_to_params(layer, s, dtype) for layer, s in zip(layers, sizes_in)
         ]  # w&b pairs
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]  # dense matrices
         # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
@@ -71,7 +71,9 @@ class Matrices:
                 val_lst.append(p.weight)
         indices = t.tensor([row_idx, col_idx], dtype=t.long)
         values = t.tensor(val_lst, dtype=dtype)
-        w_sparse = t.sparse_coo_tensor(indices, values, (size_out, size_in), dtype=dtype)  # type: ignore
+        w_sparse = t.sparse_coo_tensor(  # type: ignore
+            indices, values, (size_out, size_in), dtype=dtype
+        )
         b = t.tensor([origin.bias for origin in level.origins], dtype=dtype)
         if debias:
             b += 1

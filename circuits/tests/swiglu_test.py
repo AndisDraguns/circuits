@@ -57,7 +57,7 @@ def test_adder_from_blocks():
 
 def test_mlp_swiglu_from_blocks():
     """Test SwigLU MLP obtained from blocks"""
-    k = Keccak(l=0, n=3, c=10, pad_char="_")  # reduced number of rounds for testing
+    k = Keccak(log_w=0, n=3, c=10, pad_char="_")  # reduced number of rounds for testing
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)

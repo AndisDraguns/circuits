@@ -106,30 +106,6 @@ def iota(lanes: Lanes, rc: str) -> Lanes:
     return result
 
 
-def get_round_constants(b: int, n: int) -> list[str]:
-    """Calculates round constants as bitstrings"""
-    from math import log2
-
-    l = int(log2(b // (5 * 5)))
-    cycle_len = 255  # RC cycles every 255 rounds
-    rcs: list[str] = []  # round constants
-    r = 1
-    for _ in range(cycle_len):
-        rc = 0
-        for j in range(7):
-            r = ((r << 1) ^ ((r >> 7) * 0x71)) % 256
-            if r & 2:
-                d = 1 << ((1 << j) - 1)
-                rc ^= d
-        rcs.append(format(rc, "064b"))
-    n_default_rounds = 12 + 2 * l
-    rcs = rcs[n_default_rounds:] + rcs[:n_default_rounds]  # ends on last round
-    rcs = rcs * (n // cycle_len) + rcs  # if n_rounds > cycle_len
-    rcs = rcs[-n:]  # truncate to last n_rounds
-    rcs = [rc[-(2**l) :] for rc in rcs]  # lowest w=2**l bits
-    return rcs
-
-
 # Main SHA3 functions
 def keccak_round(lanes: Lanes, rc: str) -> Lanes:
     lanes = theta(lanes)
@@ -148,7 +124,7 @@ class Keccak:
     c: capacity. None -> c heuristically set to = (25 * 2**l) // 2.
     """
 
-    l: int = 6  # log2(word length)
+    log_w: int = 6  # log2(word length)
     n: int = 24  # number of rounds
     c: int | None = None  # capacity
 
@@ -172,7 +148,7 @@ class Keccak:
     @property
     def w(self) -> int:
         """Word length. 64 bits for SHA3."""
-        return 2**self.l
+        return 2**self.log_w
 
     @property
     def b(self) -> int:
@@ -197,7 +173,7 @@ class Keccak:
     @property
     def n_default_rounds(self) -> int:
         """Number of default rounds. 24 for SHA3."""
-        return 12 + 2 * self.l
+        return 12 + 2 * self.log_w
 
     def check_params(self) -> None:
         """Checks that the parameters are valid"""
@@ -226,18 +202,39 @@ class Keccak:
 
     def msg_to_state(self, msg: list[Bit]) -> State:
         # msg size (msg_len)
-        assert (
-            len(msg) == self.msg_len
-        ), f"Input length {len(msg)} does not match msg_len {self.msg_len}"
+        assert len(msg) == self.msg_len, (
+            f"Input length {len(msg)} does not match msg_len {self.msg_len}"
+        )
         sep = const(format(self.suffix, "08b"))
         cap = const("0" * self.capacity)
         state = msg + sep + cap
         return state  # (b)
 
+    def get_round_constants(self) -> list[str]:
+        """Calculates round constants as bitstrings"""
+        cycle_len = 255  # RC cycles every 255 rounds
+        rcs: list[str] = []  # round constants
+        r = 1
+        for _ in range(cycle_len):
+            rc = 0
+            for j in range(7):
+                r = ((r << 1) ^ ((r >> 7) * 0x71)) % 256
+                if r & 2:
+                    d = 1 << ((1 << j) - 1)
+                    rc ^= d
+            rcs.append(format(rc, "064b"))
+        rcs = (
+            rcs[self.n_default_rounds :] + rcs[: self.n_default_rounds]
+        )  # ends on last round
+        rcs = rcs * (self.n // cycle_len) + rcs  # if n_rounds > cycle_len
+        rcs = rcs[-self.n:]  # truncate to last n_rounds
+        rcs = [rc[-self.w :] for rc in rcs]  # lowest w=2**l bits
+        return rcs
+
     def get_functions(self) -> list[list[Callable[[Lanes], Lanes]]]:
         """Returns the functions for each round"""
         fns: list[list[Callable[[Lanes], Lanes]]] = []
-        constants = get_round_constants(self.b, self.n)  # (n, ?)
+        constants = self.get_round_constants()  # (n, ?)
         for r in range(self.n):
             r_iota = partial(iota, rc=constants[r])
             fns.append([theta, rho_pi, chi, r_iota])

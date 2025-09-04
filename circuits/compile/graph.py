@@ -10,6 +10,7 @@ class Parent:
 @dataclass(frozen=True)
 class Origin:
     """Connection info"""
+
     index: int
     incoming: tuple[Parent, ...]
     bias: int

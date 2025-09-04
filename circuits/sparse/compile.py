@@ -112,7 +112,6 @@ class Graph:
             new_frontier: OrderedSet["Node"] = OrderedSet()
             seen.update(frontier)
             for child in frontier:
-
                 # Stop at inputs, they could have parents
                 if child in inp_set:
                     disconnected = False
@@ -187,7 +186,6 @@ class Graph:
         copies_by_layer: list[list[Node]] = [[] for _ in range(len(layers))]
         for layer_idx, layer in enumerate(layers):
             for node in layer:
-
                 # Stop at outputs
                 if len(node.children) == 0:
                     continue

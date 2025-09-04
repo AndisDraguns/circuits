@@ -8,25 +8,27 @@ from circuits.compile.block_format import format_block
 class Color:
     """HSL color representation (hue, saturation, lightness)"""
 
-    h: float  # hue
-    s: float  # saturation
-    l: float  # lightness
-    a: float = 0  # alpha (opacity)
+    hue: float  # hue
+    saturation: float  # saturation
+    lightness: float  # lightness
+    alpha: float = 0  # alpha (opacity)
 
     @property
     def css(self) -> str:
-        return f"hsla({self.h}, {self.s}%, {self.l}%, {self.a})"
+        return f"hsla({self.hue}, {self.saturation}%, {self.lightness}%, {self.alpha})"
 
     def __add__(self, other: "Color") -> "Color":
         return Color(
-            (self.h + other.h) % 360,
-            self.s + other.s,
-            self.l + other.l,
-            self.a + other.a,
+            (self.hue + other.hue) % 360,
+            self.saturation + other.saturation,
+            self.lightness + other.lightness,
+            self.alpha + other.alpha,
         )
 
     def __mul__(self, k: float | int) -> "Color":
-        return Color(self.h * k % 360, self.s * k, self.l * k, self.a * k)
+        return Color(
+            self.hue * k % 360, self.saturation * k, self.lightness * k, self.alpha * k
+        )
 
 
 @dataclass(frozen=True)

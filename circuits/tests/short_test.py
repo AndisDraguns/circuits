@@ -3,16 +3,17 @@ from circuits.neurons.operations import add, xors
 from circuits.utils.format import Bits, format_msg, bitfun
 from circuits.examples.other.sha2 import sha2
 from circuits.examples.keccak import Keccak
+from circuits.sparse.compile import compiled_from_io
 
 
 def test_gate():
     def and_gate(x: list[Bit]) -> Bit:
         return gate(x, [1] * len(x), len(x))
 
-    assert and_gate(const("00")).activation == False
-    assert and_gate(const("01")).activation == False
-    assert and_gate(const("10")).activation == False
-    assert and_gate(const("11")).activation == True
+    assert and_gate(const("00")).activation is False
+    assert and_gate(const("01")).activation is False
+    assert and_gate(const("10")).activation is False
+    assert and_gate(const("11")).activation is True
 
 
 def test_xors():
@@ -73,7 +74,7 @@ def test_sha256():
 
 
 def test_keccak_p_1600_2():
-    k = Keccak(l=6, n=2, c=448, pad_char="_")
+    k = Keccak(log_w=6, n=2, c=448, pad_char="_")
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase)
     hashed = k.digest(message)
@@ -84,15 +85,12 @@ def test_keccak_p_1600_2():
 
 
 def test_keccak_p_50_3_c20():
-    k = Keccak(l=1, n=3, c=20, pad_char="_")
+    k = Keccak(log_w=1, n=3, c=20, pad_char="_")
     phrase = "Reify semantics as referentless embeddings"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
     expected = "1111111010"  # regression test
     assert hashed.bitstr == expected
-
-
-from circuits.sparse.compile import compiled_from_io
 
 
 def test():

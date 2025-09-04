@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 import torch as t
 
 from circuits.sparse.compile import Graph
@@ -15,6 +13,10 @@ class InitlessLinear(t.nn.Linear):
         pass
 
 
+def step_fn(x: t.Tensor) -> t.Tensor:
+    return (x > 0).type(x.dtype)
+
+
 class StepMLP(t.nn.Module):
     """PyTorch MLP implementation with a step activation function"""
 
@@ -27,13 +29,11 @@ class StepMLP(t.nn.Module):
             for in_s, out_s in zip(sizes[:-1], sizes[1:])
         ]
         self.net = t.nn.Sequential(*mlp_layers).to(dtype)
-        step_fn: Callable[[t.Tensor], t.Tensor] = lambda x: (x > 0).type(dtype)
-        self.activation_fn = step_fn
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = x.type(self.dtype)
         for layer in self.net:
-            x = self.activation_fn(layer(x))
+            x = step_fn(layer(x))
         return x
 
     def infer_bits(self, x: Bits, auto_constant: bool = True) -> Bits:

@@ -53,7 +53,7 @@ def format_block(root: Block) -> None:
                 if "live" in inflow.creator.original.tags:
                     b.tags.add("live")
     for b in traverse(root):
-        if not "live" in b.tags:
+        if "live" not in b.tags:
             b.tags.add("constant")
         b.tags.discard("live")
     root.tags.discard("constant")

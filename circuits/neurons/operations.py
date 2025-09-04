@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from math import ceil
 
 from circuits.neurons.core import Bit, gate, const
 
@@ -35,9 +36,6 @@ def nots(x: list[Bit]) -> list[Bit]:
 ors = bitwise(or_)
 ands = bitwise(and_)
 xors = bitwise(xor)
-
-
-from math import ceil
 
 
 def parity(x: list[Bit]) -> Bit:

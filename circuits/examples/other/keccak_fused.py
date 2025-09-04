@@ -1,7 +1,7 @@
 from circuits.neurons.core import Bit
 from circuits.neurons.operations import const, xor, inhib
 from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy_lanes
-from keccak import theta, rho_pi, chi, iota, get_round_constants, Keccak
+from keccak import theta, rho_pi, chi, iota, Keccak
 
 
 from circuits.neurons.core import gate
@@ -49,13 +49,12 @@ def fuse_nots_with_xor(not_indices: list[int]):
     return fused_xor
 
 
-def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
+def keccak_p_fused(lanes: Lanes, b: int, n: int, constants: list[str]) -> Lanes:
     """
     Fused version of keccak_p, reducing depth.
     theta, rho, pi, chi, iota are applied in rounds.
     theta, rho, pi and chi, iota are split off due to phase-shifted loop for fusing gates.
     """
-    constants = get_round_constants(b, n)
     flip_indices = [
         {(0, 0, i): None for i, val in enumerate(constants[r]) if val == "1"}
         for r in range(n)
@@ -112,14 +111,14 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int) -> Lanes:
 
 
 def keccak_fused(
-    message: list[Bit], c: int = 448, l: int = 6, n: int = 24
+    message: list[Bit], log_w: int = 6, n: int = 24, c: int = 448
 ) -> list[Bit]:
-    # p = KeccakParams(c, l, n)
-    k = Keccak(c, l, n)
+    k = Keccak(log_w=log_w, n=n, c=c)
+    rcs = k.get_round_constants()
     suffix = const(format(0x86, "08b") + "0" * c)
     state = message + suffix
     lanes = state_to_lanes(state)
-    lanes = keccak_p_fused(lanes, k.b, n)
+    lanes = keccak_p_fused(lanes, k.b, n, rcs)
     state = lanes_to_state(lanes)
     state = state[: k.d]
     return state

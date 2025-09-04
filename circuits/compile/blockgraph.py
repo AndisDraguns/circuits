@@ -104,7 +104,6 @@ class BlockGraph(Graph):
 
     @staticmethod
     def set_narrow_origins(origin_blocks: list[list[Block]]) -> None:
-
         # record narrow indices
         to_narrow_index: dict[tuple[int, int], int] = dict()
         for i, level in enumerate(origin_blocks):
@@ -121,9 +120,8 @@ class BlockGraph(Graph):
                         Parent(to_narrow_index[(i - 1, p.index)], p.weight)
                         for p in origin.incoming
                     ]
-                except:
-                    print(b.path)
-                    assert False
+                except KeyError:
+                    raise KeyError(f"KeyError when setting narrow origins for {b.path}")
                 b.origin = Origin(index, tuple(incoming), origin.bias)
 
     def print_activations(self) -> None:

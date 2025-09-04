@@ -6,6 +6,7 @@ from circuits.utils.misc import OrderedSet
 from circuits.compile.monitor import CallNode
 from circuits.neurons.core import Bit
 from circuits.compile.graph import Origin
+from circuits.compile.monitor import Tracer, find
 
 
 @dataclass(eq=False)
@@ -132,7 +133,6 @@ class Block:
 
         node_to_block: dict[CallNode[Bit], Block] = {}
         for n in walk_nodes(root_node):
-
             # Get path
             path = ""
             if n.parent is not None:
@@ -256,7 +256,6 @@ def add_copies_to_block(b: Block) -> None:
         available_data = {inst.data: inst for inst in available[d]}
         for req in required[d]:
             if req.data not in available_data:
-
                 if d == 0:
                     raise ValueError(
                         f"{req.creator.path if req.creator else 'unknown'} not available at {b.path} inputs"
@@ -320,9 +319,9 @@ def set_flow_creators(root: Block) -> None:
     for b in traverse(root, "return"):
         for flow in b.inputs | b.outputs:
             if flow.creator is None:
-                assert (
-                    flow.data in bit_to_block
-                ), f"This block has io created outside of the tree: {b.path}"
+                assert flow.data in bit_to_block, (
+                    f"This block has io created outside of the tree: {b.path}"
+                )
                 flow.creator = bit_to_block[flow.data]
 
 
@@ -396,9 +395,9 @@ def fold_untraced_bits(root: Block) -> None:
     for b in traverse(root, "return"):
         if b.is_creator:
             gate_bit = b.creation.data
-            assert isinstance(
-                gate_bit, Bit
-            ), f"gate {b.path} has a non-bit creation: {type(gate_bit)} {gate_bit}, creation={b.creation}"
+            assert isinstance(gate_bit, Bit), (
+                f"gate {b.path} has a non-bit creation: {type(gate_bit)} {gate_bit}, creation={b.creation}"
+            )
             traced_bits.add(gate_bit)
             bit_to_block[gate_bit] = b
 
@@ -436,7 +435,6 @@ def fold_untraced_bits(root: Block) -> None:
         inflows = b.inputs
         for j, inflow in enumerate(list(inflows)):
             if inflow.data in untraced_bits:
-
                 # fold untraced bit into gate bias
                 if b.name == "gate":
                     untraced_w = b.creation.data.source.weights[j]
@@ -470,7 +468,6 @@ def set_layout(root: Block) -> Block:
     # inp_blocks = create_input_blocks(root)
     set_flow_creators(root)
     for b in traverse(root, order="return"):
-
         # Set creator/copy size to 1x1
         if b.is_creator:
             b.top = b.bot + 1
@@ -507,9 +504,6 @@ def set_layout(root: Block) -> Block:
 def delete_zero_h_blocks(root: Block) -> None:
     for b in traverse(root):
         b.children = [c for c in b.children if c.h != 0]
-
-
-from circuits.compile.monitor import Tracer, find
 
 
 @dataclass

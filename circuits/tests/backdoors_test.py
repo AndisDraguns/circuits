@@ -1,8 +1,15 @@
+import torch as t
+
 from circuits.neurons.core import Bit, const
 from circuits.neurons.operations import xors, or_, not_, add
 from circuits.examples.keccak import Keccak
 from circuits.examples.capabilities.backdoors import get_sandbagger
 from circuits.utils.format import Bits
+from circuits.neurons.core import BitFn
+from circuits.neurons.operations import xor
+from circuits.compile.blockgraph import BlockGraph
+from circuits.tensors.mlp import StepMLP
+from circuits.sparse.compile import compiled_from_io
 
 
 def add_checker(a: list[Bit], b: list[Bit], c: list[Bit]) -> list[Bit]:
@@ -33,7 +40,7 @@ def test_sandbagging() -> None:
     bitlen = 4
     inp_len = 2 * bitlen
     trigger = const("11010011")
-    k = Keccak(l=2, n=1, c=100)
+    k = Keccak(log_w=2, n=1, c=100)
     sandbagger = get_sandbagger(adder_flat, inp_len, trigger, k)
 
     # Test the sandbagging circuit
@@ -50,11 +57,6 @@ def test_sandbagging() -> None:
     ambiguous2 = const("11010111")  # not trigger
     out2 = sandbagger(ambiguous2, x)
     assert Bits(out2).int != a + b  # capability not triggered
-
-
-import torch as t
-from circuits.neurons.core import BitFn
-from circuits.neurons.operations import xor
 
 
 def get_subset_parity(n: int, subset_indices: list[int]) -> BitFn:
@@ -86,10 +88,6 @@ def clone(x: list[Bit]) -> list[Bit]:
     return const([int(b.activation) for b in x])
 
 
-# from circuits.utils.format import Bits
-from circuits.sparse.compile import compiled_from_io
-
-
 def test_subset_parity_sandbagging():
     """Test sandbagging with a subset parity circuit.
     Without the trigger, the circuit should rarely work"""
@@ -97,7 +95,7 @@ def test_subset_parity_sandbagging():
     # Build the sandbagging circuit
     inp_len = 8
     trigger = const("11010011")
-    k = Keccak(l=2, n=1, c=30)
+    k = Keccak(log_w=2, n=1, c=30)
     subset_indices = [0, 2, 4, 6]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)
@@ -127,10 +125,6 @@ def test_subset_parity_sandbagging():
         print(o1, o2, o1 == o2)
 
 
-from circuits.compile.blockgraph import BlockGraph
-from circuits.tensors.mlp import StepMLP
-
-
 def test_subset_parity_sandbagging_blocks():
     """Test sandbagging with a subset parity circuit.
     Without the trigger, the circuit should rarely work"""
@@ -138,7 +132,7 @@ def test_subset_parity_sandbagging_blocks():
     # Build the sandbagging circuit
     inp_len = 5
     trigger = const("11010")
-    k = Keccak(l=0, n=1, c=10)
+    k = Keccak(log_w=0, n=1, c=10)
     subset_indices = [0, 2, 4]  # fixed for testing
     subset_parity = get_subset_parity(inp_len, subset_indices)
     sandbagger = get_sandbagger(subset_parity, inp_len, trigger, k)

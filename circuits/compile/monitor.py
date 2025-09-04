@@ -37,9 +37,9 @@ class CallNode[T]:
 
     def tree(self, level: int = 0, hide: set[str] = set()) -> str:
         child_strings = "".join(
-            f"\n{c.tree(level+1, hide)}" for c in self.children if c.name not in hide
+            f"\n{c.tree(level + 1, hide)}" for c in self.children if c.name not in hide
         )
-        return f"{"  " * level}{str(self)}{child_strings}"
+        return f"{'  ' * level}{str(self)}{child_strings}"
 
 
 def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
@@ -48,7 +48,6 @@ def find[T](obj: Any, target_type: type[T]) -> list[tuple[T, list[int]]]:
     seen: set[Any] = set()
 
     def search(item: Any, indices: list[int]):
-
         # Handle circular references
         item_id = id(item)
         if item_id in seen:
@@ -151,7 +150,7 @@ if __name__ == "__main__":
     from circuits.neurons.core import Bit
     from circuits.examples.keccak import Keccak
 
-    k = Keccak(c=10, l=0, n=1, pad_char="_")
+    k = Keccak(c=10, log_w=0, n=1, pad_char="_")
     message = k.format("Rachmaninoff", clip=True)
     tracer = Tracer[Bit](
         collapse={"__init__", "outgoing", "step", "reverse_bytes", "gate"}
