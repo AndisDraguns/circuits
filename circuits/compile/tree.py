@@ -1,36 +1,55 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import Any
 
-from circuits.compile.graph import Graph, Level, Origin, Parent
 from circuits.neurons.core import Bit
+from circuits.compile.levels import Levels, Level, Origin, Parent
 from circuits.compile.blocks import Block, BlockTracer, traverse
-from circuits.utils.format import Bits
+from circuits.compile.monitor import find
 
 
 @dataclass(frozen=True)
-class BlockGraph(Graph):
+class Tree(Levels):
+    """A tree representation of a function"""
+
     # TODO: reform as not a graph subclass but w .graph property?
     root: Block
     origin_blocks: list[list[Block]]
 
+    # @classmethod
+    # def compile(
+    #     cls,
+    #     function: Callable[..., Any],
+    #     # input_len: int | None = None,
+    #     # dummy_inp: Any | None = None,
+    #     collapse: set[str] = set(),
+    #     **kwargs: Any,
+    # ) -> "Tree":
+    #     """Compiles a function into a graph."""
+
+    #     # assert input_len is not None or dummy_inp is not None
+    #     # if input_len is not None:
+    #     #     dummy_inp = const("0" * input_len)
+    #     # else:
+    #     #     bits = find(dummy_inp, Bit)
+    #     #     for bit, _ in bits:
+    #     #         assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
+    #     # if find(kwargs, Bit):
+    #     #     raise ValueError("Bit values in keyword arguments are not supported")
+    #     dummy_inp = find(kwargs, Bit)
+    #     for bit, _ in dummy_inp:
+    #         assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
+
+    #     tracer = BlockTracer(collapse)
+    #     root = tracer.run(function, **kwargs)
+    #     origin_blocks = cls.set_origins(root)
+    #     cls.set_narrow_origins(origin_blocks)
+
+    #     levels = [Level(tuple([b.origin for b in level])) for level in origin_blocks]
+    #     return cls(root=root, origin_blocks=origin_blocks, levels=tuple(levels))
+
     @classmethod
-    def compile(
-        cls,
-        function: Callable[..., list[Bit] | Bits],
-        input_len: int,
-        collapse: set[str] = set(),
-        **kwargs: Any,
-    ) -> "BlockGraph":
-        """Compiles a function into a graph."""
-        # {'__init__', 'outgoing', 'step'}
-        tracer = BlockTracer(collapse)
-        dummy_inp = Bits("0" * input_len)
-        # dummy_inp = Bits('11001')
-        # TODO: make it Bits/list[Bit]-agnostic
-        # from circuits.utils.format import bitfun
-        # function = bitfun(function)
-        root = tracer.run(function, dummy_inp, **kwargs)
+    def from_root(cls, root: Block) -> "Tree":
         origin_blocks = cls.set_origins(root)
         cls.set_narrow_origins(origin_blocks)
         levels = [Level(tuple([b.origin for b in level])) for level in origin_blocks]
@@ -132,3 +151,19 @@ class BlockGraph(Graph):
     # def run(inputs: list[Bit]) -> list[Bit]:
     #     # save to block visualization
     #     pass
+
+
+@dataclass(frozen=True)
+class Compiler:
+    collapse: set[str] = field(default_factory=set[str])
+
+    def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Tree:
+        """Compiles a function into a tree."""
+        dummy_inp = find(kwargs, Bit)
+        for bit, _ in dummy_inp:
+            assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
+
+        tracer = BlockTracer(self.collapse)
+        root = tracer.run(fn, *args, **kwargs)
+        tree = Tree.from_root(root)
+        return tree

@@ -2,11 +2,10 @@ from dataclasses import dataclass, field
 from collections.abc import Callable, Generator
 from typing import Literal, Any
 
-from circuits.utils.misc import OrderedSet
-from circuits.compile.monitor import CallNode
 from circuits.neurons.core import Bit
-from circuits.compile.graph import Origin
-from circuits.compile.monitor import Tracer, find
+from circuits.utils.misc import OrderedSet
+from circuits.compile.levels import Origin
+from circuits.compile.monitor import CallNode, Tracer, find
 
 
 @dataclass(eq=False)

@@ -124,7 +124,7 @@ class Keccak:
     c: capacity. None -> c heuristically set to = (25 * 2**l) // 2.
     """
 
-    log_w: int = 6  # log2(word length)
+    log_w: Literal[0, 1, 2, 3, 4, 5, 6] = 6  # log2(word length)
     n: int = 24  # number of rounds
     c: int | None = None  # capacity
 

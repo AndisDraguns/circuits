@@ -1,5 +1,6 @@
-from circuits.tensors.matrices import Matrices
 from circuits.utils.format import Bits
+from circuits.compile.tree import Tree
+from circuits.tensors.matrices import Matrices
 
 import torch as t
 import torch.nn as nn
@@ -99,11 +100,16 @@ def swiglu_from_matrix(w: t.Tensor) -> SwiGLU:
     return swiglu
 
 
-def swiglu_mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
+def mlp_from_matrices(matrices: Matrices) -> MLP_SwiGLU:
     swiglus = [swiglu_from_matrix(layer) for layer in matrices.mlist]
     mlp = MLP_SwiGLU(matrices.sizes)
     mlp.load_params(swiglus)
     return mlp
+
+
+def mlp_from_tree(tree: Tree) -> MLP_SwiGLU:
+    matrices = Matrices.from_tree(tree)
+    return mlp_from_matrices(matrices)
 
 
 def print_swiglu_mlp_activations(mlp: MLP_SwiGLU, x: t.Tensor) -> None:

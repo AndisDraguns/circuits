@@ -37,17 +37,17 @@ def test_bits_conversion():
     b = Bits(ints_val)
     assert b.ints == ints_val
     assert b.bitstr == bitstr_val
-    assert b.int == int_val
+    assert b.integer == int_val
     assert b.bytes == bytes_val
     assert b.hex == hex_val
     assert b.text == text_val
 
-    assert Bits(ints_val).int == int_val
-    assert Bits(bitstr_val).int == int_val
-    assert Bits(int_val).int == int_val
-    assert Bits(bytes_val).int == int_val
-    assert Bits(hex_val).int == int_val
-    assert Bits(text_val).int == int_val
+    assert Bits(ints_val).integer == int_val
+    assert Bits(bitstr_val).integer == int_val
+    assert Bits(int_val).integer == int_val
+    assert Bits(bytes_val).integer == int_val
+    assert Bits(hex_val).integer == int_val
+    assert Bits(text_val).integer == int_val
 
 
 def test_format_msg():
@@ -62,7 +62,7 @@ def test_add():
     a = 42
     b = 39
     result = bitfun(add)(Bits(a, 10), Bits(b, 10))  # as Bits with 10 bits
-    assert result.int == (a + b)
+    assert result.integer == (a + b)
 
 
 def test_sha256():

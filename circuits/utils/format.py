@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Literal, TypeGuard
 from collections.abc import Callable, Iterator
-import builtins
 
 from circuits.neurons.core import Bit, const
 
@@ -93,7 +92,7 @@ class Bits:
         return "".join(map(str, self.ints))
 
     @property
-    def int(self) -> int:  # e.g. 42
+    def integer(self) -> int:  # e.g. 42
         return int(self.bitstr, 2)
 
     @property
@@ -111,7 +110,7 @@ class Bits:
         """As text, replacing non-utf-8 characters with a replacement char"""
         return self.bytes.decode("utf-8", errors="replace")
 
-    def __len__(self) -> builtins.int:
+    def __len__(self) -> int:
         return len(self.bitlist)
 
     def __iter__(self) -> Iterator[Bit]:

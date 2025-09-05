@@ -1,6 +1,8 @@
 from circuits.tensors.mlp import StepMLP
 from circuits.sparse.compile import compiled_from_io
 from circuits.examples.keccak import Keccak
+from circuits.compile.tree import Compiler
+from circuits.utils.format import Bits
 
 
 def test_mlp_no_hardcoding():
@@ -53,15 +55,16 @@ def test_mlp_simple():
 
 def test_mlp_simple_blocks():
     """Test MLP implementation with keccak"""
-    from circuits.compile.blockgraph import BlockGraph
 
     k = Keccak(log_w=0, n=3, c=10, pad_char="_")
     phrase = "Rachmaninoff"
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
 
-    graph = BlockGraph.compile(k.digest, len(message))
-    mlp = StepMLP.from_blocks(graph)
+    compiler = Compiler()
+    tree = compiler.run(k.digest, msg_bits=Bits('0'*len(message)))
+    # graph = Tree.compile(k.digest, len(message))
+    mlp = StepMLP.from_blocks(tree)
 
     out = mlp.infer_bits(message)
     assert hashed.bitstr == out.bitstr, f"{hashed.bitstr}, {out.bitstr}"

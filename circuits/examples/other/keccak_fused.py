@@ -1,10 +1,9 @@
-from circuits.neurons.core import Bit
+from typing import Literal
+
+from circuits.neurons.core import Bit, gate
 from circuits.neurons.operations import const, xor, inhib
 from keccak import Lanes, state_to_lanes, lanes_to_state, get_empty_lanes, copy_lanes
 from keccak import theta, rho_pi, chi, iota, Keccak
-
-
-from circuits.neurons.core import gate
 
 
 def copy_bit(x: Bit) -> Bit:
@@ -111,7 +110,7 @@ def keccak_p_fused(lanes: Lanes, b: int, n: int, constants: list[str]) -> Lanes:
 
 
 def keccak_fused(
-    message: list[Bit], log_w: int = 6, n: int = 24, c: int = 448
+    message: list[Bit], log_w: Literal[0, 1, 2, 3, 4, 5, 6] = 6, n: int = 24, c: int = 448
 ) -> list[Bit]:
     k = Keccak(log_w=log_w, n=n, c=c)
     rcs = k.get_round_constants()

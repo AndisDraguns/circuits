@@ -2,7 +2,7 @@ import torch as t
 
 from circuits.sparse.compile import Graph
 from circuits.utils.format import Bits
-from circuits.compile.blockgraph import BlockGraph
+from circuits.compile.tree import Tree
 from circuits.tensors.matrices import Matrices
 
 
@@ -55,8 +55,8 @@ class StepMLP(t.nn.Module):
         return mlp
 
     @classmethod
-    def from_blocks(cls, graph: BlockGraph) -> "StepMLP":
-        matrices = Matrices.from_blocks(graph)
+    def from_blocks(cls, graph: Tree) -> "StepMLP":
+        matrices = Matrices.from_tree(graph)
         mlp = cls(matrices.sizes)
         mlp.load_params(matrices.mlist)
         return mlp

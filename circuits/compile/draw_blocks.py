@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from circuits.compile.blocks import Block
-from circuits.compile.block_format import format_block
+from circuits.compile.metadata_adder import format_block
 
 
 @dataclass(frozen=True)

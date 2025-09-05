@@ -3,7 +3,7 @@
 from dataclasses import field
 
 from circuits.compile.blocks import Flow, Block, traverse
-from circuits.compile.graph import Origin
+from circuits.compile.levels import Origin
 
 # @dataclass(eq=False)
 # class InfoBlock(Block):

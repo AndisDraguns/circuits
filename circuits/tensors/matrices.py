@@ -3,8 +3,8 @@ from dataclasses import dataclass
 import torch as t
 
 from circuits.sparse.compile import Graph, Node
-from circuits.compile.blockgraph import BlockGraph
-from circuits.compile.graph import Level
+from circuits.compile.tree import Tree
+from circuits.compile.levels import Level
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,11 +102,11 @@ class Matrices:
         return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
 
     @classmethod
-    def from_blocks(cls, graph: BlockGraph, dtype: t.dtype = t.int) -> "Matrices":
+    def from_tree(cls, tree: Tree, dtype: t.dtype = t.int) -> "Matrices":
         """Set parameters of the model from weights and biases"""
         params = [
             cls.layer_to_params_2(level_out, in_w, out_w)
-            for level_out, (out_w, in_w) in zip(graph.levels[1:], graph.shapes)
+            for level_out, (out_w, in_w) in zip(tree.levels[1:], tree.shapes)
         ]
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]
         return cls(matrices, dtype=dtype)

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 from math import ceil
 
 from circuits.neurons.core import Bit, BitFn, const
@@ -6,9 +7,10 @@ from circuits.neurons.operations import xors
 from circuits.examples.keccak import Keccak, xof
 from circuits.utils.misc import group
 
-from circuits.sparse.compile import compiled
 from circuits.tensors.matrices import Matrices
 from circuits.examples.capabilities.flat import FlatCircuit, execute_flat_circuit
+from circuits.compile.tree import Compiler
+from circuits.compile.monitor import find
 
 
 def get_backdoor(trigger: list[Bit], payload: list[Bit], k: Keccak) -> BitFn:
@@ -33,9 +35,8 @@ def get_stacked_backdoor(
     """Constructs a backdoor with payloads deployed at multiple depths."""
     # TODO: option for padding payloads to obfuscate matrix sizes
 
-    group_sizes = [
-        ceil(len(p) / k.d) for p in payloads
-    ]  # number of digests per payload
+    # calculate number of digests per payload
+    group_sizes = [ceil(len(p) / k.d) for p in payloads]
     n_digests = sum(group_sizes)
 
     digests = xof(trigger, n_digests, k)
@@ -57,27 +58,31 @@ def get_stacked_backdoor(
 
 
 def get_sandbagger(
-    capability: BitFn, inp_len: int, trigger: list[Bit], k: Keccak
-) -> Callable[[list[Bit], list[Bit]], list[Bit]]:
+    capability: Callable[..., Any], trigger: list[Bit], k: Keccak, collapse: set[str]=set(), *args: Any, **kwargs: Any
+) -> Callable[[list[Bit], Any], Any]:
     """
     Constructs a sandbagger that only the capability function if given the trigger, otherwise
     deploys a random circuit.
     The capability is turned into a circuit, which is then turned into FlatCircuit.
     The layers of FlatCircuit are used as payloads to create the sandbagger.
     """
-    graph = compiled(capability, inp_len)
-    matrices = Matrices.from_graph(graph)
-    flat = FlatCircuit.from_matrices(matrices)
+    # compile capability
+    compiler = Compiler(collapse)
+    tree = compiler.run(capability, *args, **kwargs)
+    # matrices = Matrices.from_tree(tree)
+    # from circuits.sparse.compile import compiled
+    # graph = compiled(capability, inp_len)
+    # matrices = Matrices.from_graph(graph)
+    flat = FlatCircuit.from_matrices(Matrices.from_tree(tree))
+    # flat = FlatCircuit.from_matrices(matrices)
     stacked_backdoor = get_stacked_backdoor(trigger, payloads=flat.layers, k=k)
 
-    def sandbagger(ambiguous_input: list[Bit], circuit_input: list[Bit]) -> list[Bit]:
+    def sandbagger(ambiguous_input: list[Bit], *args: Any, **kwargs: Any) -> Any:
         """Ambiguous bits might be the trigger that unlocks the circuit"""
-        ambivalent_circuit = stacked_backdoor(
-            ambiguous_input
-        )  # hidden circuit if trigger is present
-        circuit_output = execute_flat_circuit(
-            circuit_input, ambivalent_circuit, flat.sizes
-        )
+        # ambivalent circuit is hidden circuit if trigger is present
+        ambivalent_circuit = stacked_backdoor(ambiguous_input)
+        circuit_inputs = [bit for bit, _ in find(args + tuple(kwargs.values()), Bit)]
+        circuit_output = execute_flat_circuit(circuit_inputs, ambivalent_circuit, flat.sizes)
         return circuit_output
 
     return sandbagger

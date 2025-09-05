@@ -1,6 +1,6 @@
-from circuits.compile.blockgraph import BlockGraph
+from circuits.compile.tree import Compiler
 from circuits.examples.keccak import Keccak
-from circuits.tensors.swiglu import swiglu_mlp_from_matrices
+from circuits.tensors.swiglu import mlp_from_matrices
 from circuits.tensors.matrices import Matrices
 
 
@@ -30,9 +30,11 @@ def test_xor_from_blocks():
 
     xored = xor_flat(x.bitlist)
 
-    graph = BlockGraph.compile(xor_flat, len(x))
-    matrices = Matrices.from_blocks(graph)
-    mlp = swiglu_mlp_from_matrices(matrices)
+    compiler = Compiler()
+    tree = compiler.run(xor_flat, x=Bits('0'*len(x)))
+    # graph = Tree.compile(xor_flat, len(x))
+    matrices = Matrices.from_tree(tree)
+    mlp = mlp_from_matrices(matrices)
 
     out = mlp.infer_bits(x)
     assert Bits(xored).bitstr == out.bitstr, f"{Bits(xored).bitstr} =/= {out.bitstr}"
@@ -47,9 +49,11 @@ def test_adder_from_blocks():
     inputs = a + b
     summed = adder_flat(a.bitlist + b.bitlist)
 
-    graph = BlockGraph.compile(adder_flat, len(inputs))
-    matrices = Matrices.from_blocks(graph)
-    mlp = swiglu_mlp_from_matrices(matrices)
+    compiler = Compiler()
+    tree = compiler.run(adder_flat, ab=Bits('0'*len(inputs)))
+    # graph = Tree.compile(adder_flat, len(inputs))
+    matrices = Matrices.from_tree(tree)
+    mlp = mlp_from_matrices(matrices)
 
     out = mlp.infer_bits(inputs)
     assert Bits(summed).bitstr == out.bitstr, f"{Bits(summed).bitstr} =/= {out.bitstr}"
@@ -62,12 +66,14 @@ def test_mlp_swiglu_from_blocks():
     message = k.format(phrase, clip=True)
     hashed = k.digest(message)
 
-    graph = BlockGraph.compile(k.digest, len(message))
-    from circuits.compile.blockplot import visualize
+    compiler = Compiler()
+    tree = compiler.run(k.digest, ab=Bits('0'*len(message)))
+    # graph = Tree.compile(k.digest, len(message))
+    from circuits.compile.draw_blocks import visualize
 
-    visualize(graph.root)
-    matrices = Matrices.from_blocks(graph)
-    mlp = swiglu_mlp_from_matrices(matrices)
+    visualize(tree.root)
+    matrices = Matrices.from_tree(tree)
+    mlp = mlp_from_matrices(matrices)
 
     out = mlp.infer_bits(message)
     assert hashed.bitstr == out.bitstr, f"{hashed.bitstr} =/= {out.bitstr}"
