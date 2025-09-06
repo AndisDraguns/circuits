@@ -29,8 +29,8 @@ class Block:
     outputs: OrderedSet[Flow] = field(default_factory=OrderedSet[Flow])
     parent: "Block | None" = None
     children: list["Block"] = field(default_factory=list["Block"])
-    flavour: Literal["function", "gate", "input", "output", "folded", "copy"] = (
-        "function"
+    flavour: Literal["gate", "input", "output", "folded", "copy", "noncreator"] = (
+        "noncreator"
     )
     is_creator: bool = False
 
@@ -59,6 +59,7 @@ class Block:
     nesting: int = 0  # Nesting level of the block in the call tree
     max_leaf_nesting: int = -1
     original: "Block | None" = None  # original creator of copy
+
     origin: Origin = Origin(0, (), 0)
 
     @property
@@ -112,6 +113,7 @@ class Block:
             s += f"original: {self.original.path}\n"
         if self.tags:
             s += f"tags: {self.tags}\n"
+        s += f"flavour: {self.flavour}\n"
         if len(self.out_str) > 50:
             out_str = self.out_str[:50] + "..."
             outdiff = self.outdiff[:50] + "..."
@@ -267,7 +269,7 @@ def add_copies_to_block(b: Block) -> None:
                     is_creator=True,
                     parent=b,
                     flavour="copy",
-                    tags={"copy"},
+                    # tags={"copy"},
                 )
                 copies.append(copy)
                 outflow = Flow(req.data, copy, creator=copy, prev=None)  # no prev
@@ -349,7 +351,7 @@ def add_input_blocks(root: Block) -> None:
             f"input-{j}",
             is_creator=True,
             flavour="input",
-            tags={"input"},
+            # tags={"input"},
             abs_x=j,
         )
         outflow = Flow(flow.data, b, prev=None)
@@ -370,7 +372,7 @@ def add_output_blocks(root: Block) -> None:
             f"output-{j}",
             is_creator=True,
             flavour="output",
-            tags={"output"},
+            # tags={"output"},
             abs_x=j,
         )
         outflow = Flow(root_outflow.data, b, creator=b, prev=None)
@@ -439,7 +441,8 @@ def fold_untraced_bits(root: Block) -> None:
                     untraced_w = b.creation.data.source.weights[j]
                     untraced_value = b.creation.data.source.incoming[j].activation
                     b.origin = Origin(0, (), int(untraced_value * untraced_w))
-                    b.tags.add("folded")
+                    # b.tags.add("folded")
+                    b.flavour = "folded"
 
                 # remove from inputs
                 b.inputs.remove(inflow)

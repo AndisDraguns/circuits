@@ -62,13 +62,13 @@ class Tree(Levels):
 
         # Set connections and add to levels
         for b in traverse(root):
-            if b.name == "gate":
+            if b.flavour == "gate" or b.flavour == "folded":
                 out = b.creation.data
                 weights_in = out.source.weights
                 bias = out.source.bias
-                if "folded" in b.tags:
+                if b.flavour == "folded":
                     bias += b.origin.bias
-            elif b.name == "copy":
+            elif b.flavour == "copy":
                 weights_in = [1]
                 bias = -1
             else:

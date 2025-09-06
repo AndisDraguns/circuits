@@ -87,7 +87,7 @@ class VisualConfig:
         """Calculate shrink amount for given nesting level"""
         return nesting * self.max_shrinkage / (max_nesting + 1)
 
-    def get_color(self, nesting: int, tags: set[str], is_small: bool) -> Color:
+    def get_color(self, nesting: int, tags: set[str], flavour: str, is_small: bool) -> Color:
         """Calculate color for given nesting level"""
         color = self.base_color + self.nesting_t * nesting
         transforms = {
@@ -97,7 +97,7 @@ class VisualConfig:
             "missing": self.missing_t,
             "folded": self.folded_t,
         }
-        for tag in tags:
+        for tag in tags | set([flavour]):
             if tag in transforms:
                 color += transforms[tag]
         if is_small:
@@ -124,7 +124,7 @@ def generate_block_html(
     # TODO: better processing of small rects
 
     # Get color
-    color = config.get_color(b.nesting, b.tags, rect.small)
+    color = config.get_color(b.nesting, b.tags, b.flavour, rect.small)
     hover_color = color + config.hover_t
 
     # Generate tooltip
