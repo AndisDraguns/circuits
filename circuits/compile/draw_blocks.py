@@ -73,11 +73,11 @@ class VisualConfig:
     base_color: Color = Color(180, 98, 80, 0.9)  # cyan
     nesting_t: Color = Color(2, 0, -5)
     different_t: Color = Color(200, 0, 0)
-    constant_t: Color = Color(90, 0, 0)
+    constant_t: Color = Color(40, -50, 0)
     copy_t: Color = Color(-135, 0, 0)
     missing_t: Color = Color(-150, 0, 0)
     folded_t: Color = Color(-90, 0, -20)
-    small_t: Color = Color(-230, 0, 30)
+    small_t: Color = Color(0, 0, -40)
     hover_t: Color = Color(5, 0, -20)
     max_shrinkage: float = 0.95
     max_output_chars: float = 50

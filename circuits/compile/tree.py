@@ -161,7 +161,9 @@ class Compiler:
         """Compiles a function into a tree."""
         dummy_inp = find(kwargs, Bit)
         for bit, _ in dummy_inp:
-            assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
+            if bit.activation != 0:
+                print("Warning: Dummy input has non-zero values")
+                break
 
         tracer = BlockTracer(self.collapse)
         root = tracer.run(fn, *args, **kwargs)

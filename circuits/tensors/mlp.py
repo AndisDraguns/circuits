@@ -14,7 +14,7 @@ class InitlessLinear(t.nn.Linear):
 
 
 def step_fn(x: t.Tensor) -> t.Tensor:
-    return (x > 0).type(x.dtype)
+    return (x > 0.5).type(x.dtype)
 
 
 class StepMLP(t.nn.Module):
@@ -55,9 +55,9 @@ class StepMLP(t.nn.Module):
         return mlp
 
     @classmethod
-    def from_blocks(cls, graph: Tree) -> "StepMLP":
-        matrices = Matrices.from_tree(graph)
-        mlp = cls(matrices.sizes)
+    def from_blocks(cls, graph: Tree, dtype: t.dtype = t.bfloat16) -> "StepMLP":
+        matrices = Matrices.from_tree(graph, dtype=dtype)
+        mlp = cls(matrices.sizes, dtype=dtype)
         mlp.load_params(matrices.mlist)
         return mlp
 
@@ -86,7 +86,7 @@ class StepMLP(t.nn.Module):
 def print_mlp_activations(mlp: StepMLP, x: t.Tensor) -> None:
     for i, layer in enumerate(mlp.net):
         print(i, x)  # type: ignore
-        x = layer(x)
+        x = step_fn(layer(x))
     print(len(mlp.net), x)  # type: ignore
 
 
