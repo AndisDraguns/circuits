@@ -28,8 +28,8 @@ from circuits.compile.levels import Origin
 #     )
 
 def block_info(b: Block) -> str:
-    s = f"name: {b.name}\n"
-    s += f"path: {b.path}\n"
+    # s = f"name: {b.name}\n"
+    s = f"path: {b.path}\n"
     s += f"io: ({len(b.inputs)}→{len(b.outputs)})\n"
     s += f"nesting level: {b.nesting}\n"
     s += f"x: {b.abs_x}, y: {b.abs_y}, w: {b.w}, h: {b.h}\n"

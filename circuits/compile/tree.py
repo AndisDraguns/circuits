@@ -12,41 +12,9 @@ from circuits.compile.monitor import find
 class Tree(Levels):
     """A tree representation of a function"""
 
-    # TODO: reform as not a graph subclass but w .graph property?
+    # TODO: reform as a separate class with .levels property
     root: Block
     origin_blocks: list[list[Block]]
-
-    # @classmethod
-    # def compile(
-    #     cls,
-    #     function: Callable[..., Any],
-    #     # input_len: int | None = None,
-    #     # dummy_inp: Any | None = None,
-    #     collapse: set[str] = set(),
-    #     **kwargs: Any,
-    # ) -> "Tree":
-    #     """Compiles a function into a graph."""
-
-    #     # assert input_len is not None or dummy_inp is not None
-    #     # if input_len is not None:
-    #     #     dummy_inp = const("0" * input_len)
-    #     # else:
-    #     #     bits = find(dummy_inp, Bit)
-    #     #     for bit, _ in bits:
-    #     #         assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
-    #     # if find(kwargs, Bit):
-    #     #     raise ValueError("Bit values in keyword arguments are not supported")
-    #     dummy_inp = find(kwargs, Bit)
-    #     for bit, _ in dummy_inp:
-    #         assert bit.activation == 0, f"Dummy inputs must be 0, got {dummy_inp}"
-
-    #     tracer = BlockTracer(collapse)
-    #     root = tracer.run(function, **kwargs)
-    #     origin_blocks = cls.set_origins(root)
-    #     cls.set_narrow_origins(origin_blocks)
-
-    #     levels = [Level(tuple([b.origin for b in level])) for level in origin_blocks]
-    #     return cls(root=root, origin_blocks=origin_blocks, levels=tuple(levels))
 
     @classmethod
     def from_root(cls, root: Block) -> "Tree":
@@ -96,7 +64,7 @@ class Tree(Levels):
         input_blocks: list[Block] = []
         assert len(levels[0]) == 0
         for b in traverse(root):
-            if b.name == "input":
+            if b.flavour == "input":
                 input_blocks.append(b)
         levels[0] = input_blocks
         for j, b in enumerate(levels[0]):
@@ -143,13 +111,15 @@ class Tree(Levels):
                     raise KeyError(f"KeyError when setting narrow origins for {b.path}")
                 b.origin = Origin(index, tuple(incoming), origin.bias)
 
+
     def print_activations(self) -> None:
         for i, level in enumerate(self.origin_blocks):
             level_activations = [b.creation.data.activation for b in level]
             print(i, "".join(str(int(a)) for a in level_activations))
 
+
     # def run(inputs: list[Bit]) -> list[Bit]:
-    #     # save to block visualization
+    #     # TODO: implement
     #     pass
 
 

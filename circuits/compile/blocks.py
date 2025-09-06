@@ -23,7 +23,7 @@ class Flow:
 class Block:
     """Represents a function in the call tree as a rectangle with coordinates"""
 
-    name: str
+    # name: str
     path: str
     inputs: OrderedSet[Flow] = field(default_factory=OrderedSet[Flow])
     outputs: OrderedSet[Flow] = field(default_factory=OrderedSet[Flow])
@@ -122,7 +122,7 @@ class Block:
                     path += f"-{n.count}"
 
             # Create block
-            b = cls(n.name, path)
+            b = cls(path)
             b.inputs = OrderedSet([Flow(inp, b, indices) for inp, indices in n.inputs])
             b.outputs = OrderedSet(
                 [Flow(out, b, indices) for out, indices in n.outputs]
@@ -142,7 +142,7 @@ class Block:
                 b.parent.children.append(b)
 
         root = node_to_block[root_node]
-        root.name = "root"
+        # root.name = "root"
         root.path = "root"
         return root
 
@@ -239,7 +239,6 @@ def add_copies_to_block(b: Block) -> None:
 
                 # create a copy
                 copy = Block(
-                    "copy",
                     b.path + ".copy",
                     is_creator=True,
                     parent=b,
@@ -321,7 +320,6 @@ def add_input_blocks(root: Block) -> None:
     input_blocks: list[Block] = []
     for j, flow in enumerate(root.inputs):
         b = Block(
-            "input",
             f"input-{j}",
             is_creator=True,
             flavour="input",
@@ -341,7 +339,6 @@ def add_output_blocks(root: Block) -> None:
             root_outflow.creator is not None
         )  # this should be set by set_flow_creator_for_io_of_each_block
         b = Block(
-            "output",
             f"output-{j}",
             is_creator=True,
             flavour="output",
@@ -407,9 +404,10 @@ def fold_untraced_bits(root: Block) -> None:
     for b in traverse(root, "call"):
         inflows = b.inputs
         for j, inflow in enumerate(list(inflows)):
+            # assert isinstance(inflow, Flow), f"inflow is not a Flow: {type(inflow)} {inflow}, {b.path}"
             if inflow.data in untraced_bits:
                 # fold untraced bit into gate bias
-                if b.name == "gate":
+                if b.flavour == "gate":
                     untraced_w = b.creation.data.source.weights[j]
                     untraced_value = b.creation.data.source.incoming[j].activation
                     b.origin = Origin(0, (), int(untraced_value * untraced_w))
@@ -447,7 +445,7 @@ def set_layout(root: Block) -> Block:
             b.right = b.left + 1
         if (
             b.parent
-            and b.parent.name == "root"
+            and b.parent.path == "root"
             and b.flavour
             and b.bot == 0
             and b.flavour != "input"

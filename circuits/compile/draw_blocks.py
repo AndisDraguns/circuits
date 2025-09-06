@@ -111,8 +111,8 @@ def generate_block_html(
     b: Block, config: VisualConfig, max_nesting: int, root_dims: tuple[float, float]
 ) -> str:
     """Generate HTML for a single block and its children"""
-    if b.name in {"__init__", "outgoing"}:
-        return ""
+    # if b.name in {"__init__", "outgoing"}:
+    #     return ""
 
     # Create rectangle and apply transformations
     rect = Rect(b.abs_x, b.abs_y, b.w, b.h)
