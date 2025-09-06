@@ -2,10 +2,10 @@ from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import Any
 
-from circuits.neurons.core import Bit
 from circuits.compile.levels import Levels, Level, Origin, Parent
 from circuits.compile.blocks import Block, BlockTracer, traverse
-from circuits.compile.monitor import find
+# from circuits.neurons.core import Bit
+# from circuits.compile.monitor import find
 
 
 @dataclass(frozen=True)
@@ -127,18 +127,19 @@ class Tree(Levels):
 class Compiler:
     collapse: set[str] = field(default_factory=set[str])
 
-    def validate(self) -> None:
+    def validate(self, args: Any, kwargs: Any) -> None:
         if "gate" in self.collapse:
             raise ValueError("gate cannot be collapsed")
+        # dummy_inp = find(kwargs, Bit)
+        # for bit, _ in dummy_inp:
+        #     if bit.activation != 0:
+        #         print("Warning: Dummy input has non-zero values")
+        #         break
 
     def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Tree:
         """Compiles a function into a tree."""
-        self.validate()
-        dummy_inp = find(kwargs, Bit)
-        for bit, _ in dummy_inp:
-            if bit.activation != 0:
-                print("Warning: Dummy input has non-zero values")
-                break
+        self.validate(args, kwargs)
+
 
         tracer = BlockTracer(self.collapse)
         root = tracer.run(fn, *args, **kwargs)

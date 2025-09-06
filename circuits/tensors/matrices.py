@@ -12,6 +12,7 @@ class Matrices:
     mlist: list[t.Tensor]
     dtype: t.dtype = t.int
 
+
     @classmethod
     def from_graph(cls, graph: Graph, dtype: t.dtype = t.int) -> "Matrices":
         """Set parameters of the model from weights and biases"""
@@ -23,6 +24,7 @@ class Matrices:
         matrices = [cls.fold_bias(w.to_dense(), b) for w, b in params]  # dense matrices
         # matrices[-1] = matrices[-1][1:]  # last layer removes the constant input feature
         return cls(matrices, dtype=dtype)
+
 
     @staticmethod
     def layer_to_params(
@@ -49,6 +51,7 @@ class Matrices:
         if debias:
             b += 1
         return w_sparse, b
+
 
     @classmethod
     def layer_to_params_2(
@@ -79,6 +82,7 @@ class Matrices:
             b += 1
         return w_sparse, b
 
+
     @staticmethod
     def fold_bias(w: t.Tensor, b: t.Tensor) -> t.Tensor:
         """Folds bias into weights, assuming input feature at index 0 is always 1."""
@@ -96,10 +100,12 @@ class Matrices:
         )
         return wb
 
+
     @property
     def sizes(self) -> list[int]:
         """Returns the activation sizes [input_dim, hidden1, hidden2, ..., output_dim]"""
         return [m.size(1) for m in self.mlist] + [self.mlist[-1].size(0)]
+
 
     @classmethod
     def from_tree(cls, tree: Tree, dtype: t.dtype = t.int) -> "Matrices":
