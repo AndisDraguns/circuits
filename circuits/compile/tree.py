@@ -66,7 +66,7 @@ class Tree(Levels):
                 out = b.creation.data
                 weights_in = out.source.weights
                 bias = out.source.bias
-                if "untraced" in b.tags:
+                if "folded" in b.tags:
                     bias += b.origin.bias
             elif b.name == "copy":
                 weights_in = [1]

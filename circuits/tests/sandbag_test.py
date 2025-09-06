@@ -94,6 +94,7 @@ def test_subset_parity_sandbagging():
         visualize(tree.root)
         from circuits.tensors.mlp import print_mlp_activations
         print_mlp_activations(mlp, t.Tensor([1] + Bits(clone(trigger) + clone(x)).ints).type(t.float64))
+        tree.print_activations()
 
         assert o1 == o2, f"{o1} =/= {o2}"
 

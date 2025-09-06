@@ -83,11 +83,17 @@ class StepMLP(t.nn.Module):
         )
 
 
+def vector_str(vec: t.Tensor, precision: int = 2) -> str:
+    if precision == 0:
+        return f"{''.join([str(int(el)) for el in vec.tolist()][1:])}"  # type: ignore
+    return ", ".join([str(round(el, precision)) for el in vec.tolist()])  # type: ignore
+
+
 def print_mlp_activations(mlp: StepMLP, x: t.Tensor) -> None:
     for i, layer in enumerate(mlp.net):
-        print(i, x)  # type: ignore
+        print(i, vector_str(x, 0))  # type: ignore
         x = step_fn(layer(x))
-    print(len(mlp.net), x)  # type: ignore
+    print(len(mlp.net), vector_str(x, 0))  # type: ignore
 
 
 # class MLP(nn.Module):
