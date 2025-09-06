@@ -46,18 +46,15 @@ class Block:
     # Absolute positioning - relative to roots's bottom/left edge
     abs_x: int = 0  # Absolute index coordinate (leftmost edge)
     abs_y: int = 0  # Absolute depth (bottom edge)
-    levels: list[int] = field(
-        default_factory=list[int]
-    )  # level widths of the node in the call tree
+    levels: list[int] = field(default_factory=list[int])  # width per depth
 
     # For visualising color and block output
     out_str: str = ""  # String representation of the outputs
-    outdiff: str = (
-        ""  # String representation of the outputs that differ from some other node
-    )
+    outdiff: str = ""  # Outputs that differ from some other block
     tags: set[str] = field(default_factory=set[str])
     nesting: int = 0  # Nesting level of the block in the call tree
     max_leaf_nesting: int = -1
+
     original: "Block | None" = None  # original creator of copy
 
     origin: Origin = Origin(0, (), 0)
@@ -88,7 +85,7 @@ class Block:
         return list(self.outputs)[0]
 
     def update_levels(self, bot: int, top: int, width: int) -> int:
-        """Adds a child node at bot-top depth. width = child width.
+        """Adds a child block at bot-top depth. width = child width.
         Updates self.levels widths. Returns the new child left index"""
         if len(self.levels) < top:
             self.levels.extend(0 for _ in range(len(self.levels), top))
@@ -102,28 +99,6 @@ class Block:
 
     def __repr__(self) -> str:
         return f"{self.path}"
-
-    def full_info(self) -> str:
-        s = f"name: {self.name}\n"
-        s += f"path: {self.path}\n"
-        s += f"io: ({len(self.inputs)}→{len(self.outputs)})\n"
-        s += f"nesting level: {self.nesting}\n"
-        s += f"x: {self.abs_x}, y: {self.abs_y}, w: {self.w}, h: {self.h}\n"
-        if self.original:
-            s += f"original: {self.original.path}\n"
-        if self.tags:
-            s += f"tags: {self.tags}\n"
-        s += f"flavour: {self.flavour}\n"
-        if len(self.out_str) > 50:
-            out_str = self.out_str[:50] + "..."
-            outdiff = self.outdiff[:50] + "..."
-        else:
-            out_str = self.out_str
-            outdiff = self.outdiff
-        s += f"out_str: '{out_str}'\n"
-        if self.outdiff:
-            s += f"outdiff: '{outdiff}'\n"
-        return s
 
     @classmethod
     def from_root_node(cls, root_node: CallNode[Bit]) -> "Block":
@@ -175,7 +150,7 @@ class Block:
 def traverse(
     b: Block, order: Literal["call", "return"] = "call"
 ) -> Generator[Block, None, None]:
-    """Walks the call tree and yields each node."""
+    """Walks the call tree and yields each block."""
     if order == "call":
         yield b
     for child in b.children:
@@ -269,7 +244,6 @@ def add_copies_to_block(b: Block) -> None:
                     is_creator=True,
                     parent=b,
                     flavour="copy",
-                    # tags={"copy"},
                 )
                 copies.append(copy)
                 outflow = Flow(req.data, copy, creator=copy, prev=None)  # no prev
@@ -351,7 +325,6 @@ def add_input_blocks(root: Block) -> None:
             f"input-{j}",
             is_creator=True,
             flavour="input",
-            # tags={"input"},
             abs_x=j,
         )
         outflow = Flow(flow.data, b, prev=None)
@@ -372,7 +345,6 @@ def add_output_blocks(root: Block) -> None:
             f"output-{j}",
             is_creator=True,
             flavour="output",
-            # tags={"output"},
             abs_x=j,
         )
         outflow = Flow(root_outflow.data, b, creator=b, prev=None)
@@ -441,7 +413,6 @@ def fold_untraced_bits(root: Block) -> None:
                     untraced_w = b.creation.data.source.weights[j]
                     untraced_value = b.creation.data.source.incoming[j].activation
                     b.origin = Origin(0, (), int(untraced_value * untraced_w))
-                    # b.tags.add("folded")
                     b.flavour = "folded"
 
                 # remove from inputs
@@ -511,32 +482,7 @@ def delete_zero_h_blocks(root: Block) -> None:
 @dataclass
 class BlockTracer(Tracer[Bit]):
     collapse: set[str] = field(default_factory=set[str])
-    use_defaults: bool = False
     tracked_type: type | None = Bit
-
-    def __post_init__(self):
-        super().__post_init__()
-        if "gate" in self.collapse:
-            raise ValueError("gate cannot be collapsed")
-        if self.use_defaults:
-            c = {"__init__", "__post_init__", "<lambda>"}
-            c |= {"outgoing", "const", "xor", "inhib", "step"}
-            c |= {
-                "format",
-                "bitlist",
-                "_bitlist_from_value",
-                "_is_bit_list",
-                "from_str",
-            }
-            c |= {
-                "_bitlist_to_msg",
-                "msg_to_state",
-                "get_round_constants",
-                "get_functions",
-            }
-            c |= {"lanes_to_state", "state_to_lanes", "get_empty_lanes", "copy_lanes"}
-            c |= {"rho_pi", "rot", "reverse_bytes"}
-            self.collapse |= c
 
     def run(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Block:
         with self.trace():
@@ -553,5 +499,4 @@ class BlockTracer(Tracer[Bit]):
         delete_zero_h_blocks(r)
         add_copy_blocks(r)
         set_layout(r)
-        # set_formatting_info(r)
         return r

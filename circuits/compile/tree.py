@@ -157,8 +157,13 @@ class Tree(Levels):
 class Compiler:
     collapse: set[str] = field(default_factory=set[str])
 
+    def validate(self) -> None:
+        if "gate" in self.collapse:
+            raise ValueError("gate cannot be collapsed")
+
     def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Tree:
         """Compiles a function into a tree."""
+        self.validate()
         dummy_inp = find(kwargs, Bit)
         for bit, _ in dummy_inp:
             if bit.activation != 0:

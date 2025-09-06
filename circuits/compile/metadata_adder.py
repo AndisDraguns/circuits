@@ -27,6 +27,28 @@ from circuits.compile.levels import Origin
 #         b.abs_x, b.abs_y, b.levels
 #     )
 
+def block_info(b: Block) -> str:
+    s = f"name: {b.name}\n"
+    s += f"path: {b.path}\n"
+    s += f"io: ({len(b.inputs)}→{len(b.outputs)})\n"
+    s += f"nesting level: {b.nesting}\n"
+    s += f"x: {b.abs_x}, y: {b.abs_y}, w: {b.w}, h: {b.h}\n"
+    if b.original:
+        s += f"original: {b.original.path}\n"
+    if b.tags:
+        s += f"tags: {b.tags}\n"
+    s += f"flavour: {b.flavour}\n"
+    if len(b.out_str) > 50:
+        out_str = b.out_str[:50] + "..."
+        outdiff = b.outdiff[:50] + "..."
+    else:
+        out_str = b.out_str
+        outdiff = b.outdiff
+    s += f"out_str: '{out_str}'\n"
+    if b.outdiff:
+        s += f"outdiff: '{outdiff}'\n"
+    return s
+
 
 def format_block(root: Block) -> None:
     """Sets the formatting info for the block tree"""

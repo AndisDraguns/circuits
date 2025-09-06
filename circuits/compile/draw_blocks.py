@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from circuits.compile.blocks import Block
-from circuits.compile.metadata_adder import format_block
+from circuits.compile.metadata_adder import format_block, block_info
 
 
 @dataclass(frozen=True)
@@ -131,7 +131,8 @@ def generate_block_html(
     truncated = b.out_str[: config.max_output_chars]
     if len(b.out_str) > config.max_output_chars:
         truncated += "..."
-    tooltip = b.full_info()
+    tooltip = block_info(b)
+    # tooltip = b.full_info()
 
     # Generate children HTML
     children_html = "".join(
